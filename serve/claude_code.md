@@ -92,7 +92,7 @@ curl -s http://127.0.0.1:4000/v1/messages -H "Authorization: Bearer local-gatewa
   -d '{"model": "claude-gateway/cybus", "max_tokens": 64, "messages": [{"role": "user", "content": "Say hi"}]}'
 ```
 
-## 4. The taste tools in Claude Code
+## 4. The taste and craft tools in Claude Code
 
 ```bash
 claude mcp add --env HARNESS_JUDGE_BASE_URL=http://<vllm-host>:8000/v1 --env HARNESS_JUDGE_MODEL=cybus \
@@ -100,9 +100,38 @@ claude mcp add --env HARNESS_JUDGE_BASE_URL=http://<vllm-host>:8000/v1 --env HAR
 ```
 
 Keep keys out of the MCP config: export `HARNESS_JUDGE_API_KEY` in the shell that starts `claude`, or use a
-`.mcp.json` entry with `"env": {"HARNESS_JUDGE_API_KEY": "${HARNESS_JUDGE_API_KEY}"}`. Tools: `capture`, `judge`,
-`pairwise`, `style_guide_template`, `rubric`. `capture` only takes screenshots through the Studio Bridge; it never
-edits the place.
+`.mcp.json` entry with `"env": {"HARNESS_JUDGE_API_KEY": "${HARNESS_JUDGE_API_KEY}"}`. Taste tools: `capture`,
+`judge`, `pairwise`, `style_guide_template`, `rubric`. `capture` only takes screenshots through the Studio Bridge; it
+never edits the place.
+
+### Craft tools
+
+The same server gives Claude Code the harness's builder pipeline, with Cybus or any other model: the runtime kit, style
+tokens, painted textures, animation clips and sound, all without uploads. The craft tools need neither the judge model
+nor Studio; they only write files in your project. `project_root` is the absolute path of the game's project
+directory, laid out Rojo-style: scripts live in `src/<Service>/...`, where `.luau` is a ModuleScript, `.server.luau` a
+Script and `.client.luau` a LocalScript. Sync `src/` into Studio the way you already do. Every write stays inside
+`project_root`: names or links (`..`, symlinks, junctions) that lead out of it are refused.
+
+| Tool | What it does |
+| --- | --- |
+| `install_kit(project_root, overwrite=false)` | writes the runtime kit (`ReplicatedStorage.Kit`) and its boot scripts, plus empty `AssetMap`, `TexPacks/Index` and `ClipPack` modules if they are missing; returns the file list and the kit's API. Safe to repeat: identical files are skipped, files you changed are kept unless `overwrite=true`, nothing is deleted |
+| `generate_tokens(project_root, style)` | the style guide as JSON (the harness's STYLE schema; the object, or the path of a `.json` file) -> `src/ReplicatedStorage/Shared/Tokens.luau`; lists every value it had to repair |
+| `paint_texture(project_root, name, spec)` | validates and renders a texture spec (panels, 9-slice buttons, glows, icons, particle textures), saves `art/<name>.png` and packs it into `ReplicatedStorage.Shared.TexPacks`; returns the preview image and the `Kit.Textures` call that shows it. `list_textures(project_root)` lists them |
+| `author_clip(project_root, name, spec)` | validates a keyframe clip and packs it into `ReplicatedStorage.Shared.ClipPack`; returns a stick-figure contact sheet (also saved to `art/clips/<name>.png`) and the `Kit.Anim` code that plays it. `list_clips(project_root)` lists them |
+| `search_audio(query, kind="sfx", limit=8)` | public Roblox Creator Store sounds the game can play by id, no upload; results are cached under `HARNESS_CAPTURE_DIR` |
+| `playbook(name)` | the harness's references: `texture_spec`, `animation_spec`, `vfx_camera_spec`, `roblox_craft`, `style_guide`, `plan`, `rubric_<aspect>`; with no name it lists what exists |
+
+A spec or clip with problems comes back as a tool error listing all of them (with the clip's preview as written), so
+the model can fix everything in one go.
+
+Recommended loop:
+
+1. `install_kit(project_root)` once, and build on the kit API it returns.
+2. `style_guide_template()`, decide the style with concrete values, then `generate_tokens(project_root, style)`.
+3. Build scripts on the kit and the tokens; use `paint_texture`, `author_clip` and `search_audio` for art, animation and sound.
+4. Sync into Studio, then `capture()` and `judge(aspect, intent, capture=true, style=...)`.
+5. Fix every blocker and major the verdict lists, repaint or re-author, and judge again until `passed`.
 
 ## What works and what does not
 

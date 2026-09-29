@@ -68,7 +68,7 @@ streams. Tool use only works if:
 
 Images you attach in Codex reach Qwen3.8's vision tower (up to `CYBUS_MM_LIMIT`, 8 by default).
 
-## The taste tools in Codex
+## The taste and craft tools in Codex
 
 ```toml
 [mcp_servers.cybus_taste]
@@ -81,6 +81,44 @@ tool_timeout_sec = 300                   # a judge call is a vision-model round 
 startup_timeout_sec = 30
 ```
 
-Tools: `capture` (Studio screenshot; read-only), `judge` (rubric verdict with fixes), `pairwise`,
+Taste tools: `capture` (Studio screenshot; read-only), `judge` (rubric verdict with fixes), `pairwise`,
 `style_guide_template`, `rubric`. `python -m mcp_server.server --http --port 8765` serves the same tools over
 streamable HTTP at `http://127.0.0.1:8765/mcp` for `mcp_servers.<id>.url`.
+
+### Craft tools
+
+The same server gives Codex the harness's builder pipeline, with Cybus or any other model: the runtime kit, style
+tokens, painted textures, animation clips and sound, all without uploads. The craft tools need neither the judge model
+nor Studio; they only write files in your project. Pass `project_root` as an **absolute** path: the server runs in the
+`cwd` above (the harness checkout), so relative paths are refused. The project is laid out Rojo-style: scripts live in
+`src/<Service>/...` (`.luau` ModuleScript, `.server.luau` Script, `.client.luau` LocalScript), and you sync `src/` into
+Studio the way you already do. Every write stays inside `project_root`: names or links (`..`, symlinks, junctions)
+that lead out of it are refused.
+
+- `install_kit(project_root, overwrite=false)`: writes the runtime kit (`ReplicatedStorage.Kit`) and its boot scripts,
+  plus empty `AssetMap`, `TexPacks/Index` and `ClipPack` modules if missing; returns the file list and the kit's API.
+  Safe to repeat: identical files are skipped, files you changed are kept unless `overwrite=true`, nothing is deleted.
+- `generate_tokens(project_root, style)`: the style guide as JSON (the harness's STYLE schema; the object, or the path
+  of a `.json` file) -> `src/ReplicatedStorage/Shared/Tokens.luau`, with a note for every value it had to repair.
+- `paint_texture(project_root, name, spec)`: validates and renders a texture spec (panels, 9-slice buttons, glows,
+  icons, particle textures), saves `art/<name>.png`, packs it into `ReplicatedStorage.Shared.TexPacks`, and returns the
+  preview image and the `Kit.Textures` call that shows it. `list_textures(project_root)` lists them.
+- `author_clip(project_root, name, spec)`: validates a keyframe clip, packs it into `ReplicatedStorage.Shared.ClipPack`,
+  and returns a stick-figure contact sheet (also saved to `art/clips/<name>.png`) and the `Kit.Anim` code that plays
+  it. `list_clips(project_root)` lists them.
+- `search_audio(query, kind="sfx", limit=8)`: public Roblox Creator Store sounds the game can play by id, no upload;
+  cached under `HARNESS_CAPTURE_DIR`.
+- `playbook(name)`: the harness's references (`texture_spec`, `animation_spec`, `vfx_camera_spec`, `roblox_craft`,
+  `style_guide`, `plan`, `rubric_<aspect>`); with no name it lists what exists.
+
+The previews come back as MCP image content. The texture and the clip sheet are also on disk (`art/<name>.png`,
+`art/clips/<name>.png`) for clients that do not pass tool images to the model. A spec with problems comes back as a
+tool error that lists all of them.
+
+Recommended loop:
+
+1. `install_kit(project_root)` once, and build on the kit API it returns.
+2. `style_guide_template()`, decide the style with concrete values, then `generate_tokens(project_root, style)`.
+3. Build scripts on the kit and the tokens; use `paint_texture`, `author_clip` and `search_audio` for art, animation and sound.
+4. Sync into Studio, then `capture()` and `judge(aspect, intent, capture=true, style=...)`.
+5. Fix every blocker and major the verdict lists, repaint or re-author, and judge again until `passed`.
