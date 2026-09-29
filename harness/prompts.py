@@ -135,7 +135,12 @@ def arch_brief(plan: dict, style_md: str, kit_api: str) -> str:
             "FILES: every Luau file with its path under src/ (e.g. src/ServerScriptService/Game.server.luau, "
             "src/StarterPlayer/StarterPlayerScripts/Hud.client.luau, src/ReplicatedStorage/Shared/Config.luau), "
             "its responsibility and its public API (function signatures, events). Keep files focused (< 400 lines "
-            "each when written).\n"
+            "each when written). The suffix decides what a file IS: .server.luau = a Script that runs by itself "
+            "(ServerScriptService only), .client.luau = a LocalScript that runs by itself (StarterPlayerScripts, "
+            "StarterCharacterScripts, StarterGui or ReplicatedFirst only), .luau = a ModuleScript that does nothing "
+            "until required. Anything other code requires MUST be a .luau ModuleScript; give the server and the "
+            "client each one entry script that requires the modules. Server-only modules live in ServerScriptService "
+            "or ServerStorage, shared ones in ReplicatedStorage.\n"
             "REMOTES: every RemoteEvent/RemoteFunction, direction and payload. The server validates everything.\n"
             "DEBUG COMMANDS: commands the test harness can call in a running game to show a screen, start a round, "
             "trigger the signature moment, grant rewards, etc., so every part of the game can be captured.\n"
@@ -180,44 +185,60 @@ def spec_refs(aspect: str, limit: int = 12000) -> str:
     return "\n\n".join(out)
 
 
-def item_brief(item: dict, plan: dict, style_md: str, arch: dict, files: dict[str, str], extra: str = "") -> str:
+def arch_fix_brief(arch: dict, problems: list[str]) -> str:
+    return (f"ARCHITECTURE\n{compact_json(arch, 20000)}\n\nPROBLEMS (each makes code silently not run in Roblox)\n"
+            + "\n".join(f"- {p}" for p in problems)
+            + "\n\nFix every problem (rename or move files, turn required files into .luau ModuleScripts with one entry "
+            "script per side, update the items' file lists and briefs to match) and submit the full corrected "
+            "architecture.")
+
+
+def shared_context(plan: dict, style_md: str, arch: dict) -> str:
+    """What every builder of this game reads, identical across items and rounds, so it forms one long prefix the
+    model server caches (put nothing item-specific in here)."""
     from harness.kit import KIT_API
-    owned = "\n".join(f"- {f}" for f in item.get("files", []))
-    ctx = "\n\n".join(f"--- {path} ---\n{src}" for path, src in files.items())
-    others = [{"path": f["path"], "api": f["api"]} for f in arch.get("files", []) if f["path"] not in item.get("files", [])]
-    refs = spec_refs(item["aspect"])
-    return (f"YOUR ITEM: {item['id']} - {item['title']} (aspect: {item['aspect']})\n{item['brief']}\n\n"
-            f"FILES YOU OWN\n{owned}\n\n"
-            f"GAME\n{plan.get('title', '')}: {plan.get('fantasy', '')}\nCore loop: {' -> '.join(plan.get('core_loop', []))}\n"
+    files = [{"path": f["path"], "api": f["api"]} for f in arch.get("files", [])]
+    return (f"GAME\n{plan.get('title', '')}: {plan.get('fantasy', '')}\nCore loop: {' -> '.join(plan.get('core_loop', []))}\n"
             f"Signature moment: {plan.get('signature_moment', '')}\n\n"
             f"STYLE GUIDE\n{style_md[:5000]}\n\n"
-            f"RUBRIC YOUR WORK WILL BE JUDGED ON\n{playbook('rubric_' + item['aspect'])[:3500]}\n\n"
             f"KIT (already in the game)\n{KIT_API}\n\n"
-            f"CRAFT NOTES\n{craft_notes(item['aspect'])}\n\n"
-            + (f"SPEC REFERENCES FOR YOUR TOOLS\n{refs}\n\n" if refs else "")
-            + f"OTHER FILES' APIS (call these; do not edit them)\n{compact_json(others, 3500)}\n\n"
-            f"REMOTES\n{compact_json(arch.get('remotes', []), 1500)}\n\n"
+            f"EVERY FILE IN THE GAME AND ITS API (edit only the ones listed as yours below; call the others)\n"
+            f"{compact_json(files, 6000)}\n\n"
+            f"REMOTES\n{compact_json(arch.get('remotes', []), 1500)}\n\n")
+
+
+def aspect_context(aspect: str, spec_limit: int = 12000) -> str:
+    """What every builder of one aspect reads (shared by all items and rounds of that aspect)."""
+    refs = spec_refs(aspect, spec_limit)
+    return (f"RUBRIC YOUR WORK WILL BE JUDGED ON ({aspect})\n{playbook('rubric_' + aspect)[:3500]}\n\n"
+            f"CRAFT NOTES\n{craft_notes(aspect)}\n\n"
+            + (f"SPEC REFERENCES FOR YOUR TOOLS\n{refs}\n\n" if refs else ""))
+
+
+def item_brief(item: dict, plan: dict, style_md: str, arch: dict, files: dict[str, str], extra: str = "") -> str:
+    owned = "\n".join(f"- {f}" for f in item.get("files", []))
+    ctx = "\n\n".join(f"--- {path} ---\n{src}" for path, src in files.items())
+    return (shared_context(plan, style_md, arch) + aspect_context(item["aspect"])
+            + f"YOUR ITEM: {item['id']} - {item['title']} (aspect: {item['aspect']})\n{item['brief']}\n\n"
+            f"FILES YOU OWN\n{owned}\n\n"
             f"HOW IT WILL BE CAPTURED\n{compact_json(item.get('capture', {}), 800)}\n\n"
-            + (f"CURRENT CONTENT OF RELEVANT FILES\n{ctx}\n\n" if ctx else "")
+            + (f"CURRENT CONTENT OF YOUR FILES\n{ctx}\n\n" if ctx else "")
             + (extra + "\n\n" if extra else "")
             + "Build it now: write your files, then submit your report.")
 
 
-def fix_brief(item: dict, style_md: str, fix_list: str, strengths: list[str], files: dict[str, str],
-              score: float) -> str:
-    from harness.kit import KIT_API
+def fix_brief(item: dict, plan: dict, style_md: str, arch: dict, fix_list: str, strengths: list[str],
+              files: dict[str, str], score: float) -> str:
+    """Same shared prefix as the item brief (cached by the model server), then this round's review and code."""
     ctx = "\n\n".join(f"--- {path} ---\n{src}" for path, src in files.items())
     keep = "\n".join(f"- {s}" for s in strengths[:8]) or "- (none noted)"
     owned = "\n".join(f"- {f}" for f in item.get("files", []))
-    refs = spec_refs(item["aspect"], limit=6000)
-    return (f"ITEM: {item['id']} - {item['title']} (aspect: {item['aspect']})\n{item['brief']}\n\n"
+    return (shared_context(plan, style_md, arch) + aspect_context(item["aspect"])
+            + f"YOUR ITEM: {item['id']} - {item['title']} (aspect: {item['aspect']})\n{item['brief']}\n\n"
             f"FILES YOU OWN\n{owned}\n\n"
             f"REVIEW SCORE: {score:.1f}/10 on the studio scale. The captures the reviewers saw are attached.\n\n"
             f"ISSUES TO FIX (most severe first)\n{fix_list}\n\nKEEP THESE STRENGTHS\n{keep}\n\n"
-            f"STYLE GUIDE\n{style_md[:4000]}\n\nRUBRIC\n{playbook('rubric_' + item['aspect'])[:3000]}\n\n"
-            f"KIT (already in the game)\n{KIT_API}\n\n"
-            + (f"SPEC REFERENCES FOR YOUR TOOLS\n{refs}\n\n" if refs else "")
-            + f"CURRENT CODE (files you own)\n{ctx}\n\nFix the issues in the code now, then submit your report.")
+            f"CURRENT CODE (files you own)\n{ctx}\n\nFix the issues in the code now, then submit your report.")
 
 
 def director_brief(plan: dict, arch: dict, items: list[dict], evidence: list[dict], commands: dict) -> str:

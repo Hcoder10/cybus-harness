@@ -31,7 +31,8 @@ KIT_API = """ReplicatedStorage.Kit (require these; never copy or edit them):
 - Sound.register(name, {ids={"rbxassetid://..."}, group="SFX"|"UI"|"Music"|"Ambience", volume, pitch=variance, looped});
   Sound.play(name, {parent=part?}) -> Sound; Sound.music(name, fade); Sound.duck(amount, seconds); Sound.manifest()
 - Screen.gui(name, displayOrder) -> ScreenGui fitted to the 1920x1080 design canvas; Screen.isCompact(); Screen.canvas(); Screen.topInset()
-- Assets.image(name, fallback?) -> content id of generated art; Assets.slice(name) -> Rect?; Assets.has(name)
+- Assets.image(name, fallback?) -> content id of image-generator art, ONLY when image generation is enabled (otherwise
+  make art with paint_texture and Textures.apply); Assets.slice(name) -> Rect?; Assets.has(name)
 - Textures.apply(inst, name) -> bool: a paint_texture texture on an ImageLabel/Button (SliceCenter too if ScaleType is Slice), ParticleEmitter,
   Beam, Trail, Decal or MeshPart; Textures.get(name) -> Content?; .preload({names}); .has/.info/.names(); .release(name); tint LA ones via ImageColor3/Color
 - TexCodec.decode(data, w, h, fmt) -> RGBA8 buffer; TexCodec.checksum(buf) (Textures uses it; you rarely need it directly)

@@ -123,6 +123,46 @@ def text_image(title: str, text: str, width: int = 1400, max_lines: int = 120) -
     return buf.getvalue()
 
 
+CLIENT_CONTAINERS = ("StarterPlayer/StarterPlayerScripts/", "StarterPlayer/StarterCharacterScripts/", "StarterGui/",
+                     "ReplicatedFirst/", "StarterPack/")
+SERVER_CONTAINERS = ("ServerScriptService/", "Workspace/")
+
+
+def arch_problems(arch: dict) -> list[str]:
+    """Roblox placement mistakes that make code silently not run (checked before anyone builds on them)."""
+    out = []
+    seen: dict[str, str] = {}
+    for f in arch.get("files") or []:
+        path = str(f.get("path", ""))
+        name = path.rsplit("/", 1)[-1]
+        if name.count(".server") + name.count(".client") > 1:
+            out.append(f"{path}: two script suffixes; a file is ONE of .server.luau (Script), .client.luau "
+                       "(LocalScript) or .luau (ModuleScript)")
+            continue
+        try:
+            info = parse_rel(path)
+        except ValueError as e:
+            out.append(f"{path}: {e}")
+            continue
+        if info.class_name == "LocalScript" and not path.startswith(CLIENT_CONTAINERS):
+            out.append(f"{path}: a LocalScript only runs under StarterPlayer/StarterPlayerScripts, "
+                       "StarterCharacterScripts, StarterGui or ReplicatedFirst; move it there, or make it a ModuleScript "
+                       "(.luau) that a client entry script requires")
+        if info.class_name == "Script" and not path.startswith(SERVER_CONTAINERS):
+            out.append(f"{path}: a server Script only runs in ServerScriptService (or Workspace); move it, or make it "
+                       "a ModuleScript (.luau)")
+        if info.instance_path in seen:
+            out.append(f"{path} and {seen[info.instance_path]} become the same instance {info.instance_path}")
+        seen[info.instance_path] = path
+        api = str(f.get("api", ""))
+        # "PlayerState.get(player) -> ..." in a Script's API means other code expects to require it: it can't.
+        if info.class_name in ("Script", "LocalScript") and re.search(rf"\b{re.escape(info.name)}\s*[.:]\s*\w+\s*\(", api):
+            out.append(f"{path}: its API ({api[:60]}...) is a module API that other code would require, but a "
+                       f"{info.class_name} cannot be required; make it {path.rsplit('.', 2)[0]}.luau (ModuleScript) and "
+                       "let ONE entry script per side require the modules and call their init")
+    return out
+
+
 def normalize_arch(arch: dict, max_items: int) -> tuple[dict, list[str]]:
     """Canonical paths, unique item ids, disjoint file ownership, no harness-owned files. Returns notes."""
     notes: list[str] = []
@@ -460,6 +500,13 @@ class Build:
                               system=prompts.LEAD_SYSTEM, schema=schemas.ARCH, label="architecture")
         if not isinstance(arch, dict):
             raise RuntimeError("the lead produced no architecture")
+        problems = arch_problems(arch)
+        if problems:                        # one repair round: placement mistakes make code silently not run
+            wf.log(f"architecture: {len(problems)} placement problem(s); asking the lead to fix them")
+            fixed = await wf.agent(prompts.arch_fix_brief(arch, problems), role="lead", system=prompts.LEAD_SYSTEM,
+                                   schema=schemas.ARCH, label="architecture-fix")
+            if isinstance(fixed, dict) and len(arch_problems(fixed)) < len(problems):
+                arch = fixed
         self.arch, notes = normalize_arch(arch, self.cfg.max_items)
         self.items = self.arch["items"]
         if not self.items:
@@ -580,7 +627,8 @@ class Build:
         errs = self.errors_by_item(capture.logs).get(item["id"], []) if capture else []
         if errs:
             fixes = "RUNTIME ERRORS (fix first):\n" + "\n".join(errs[:8]) + "\n\n" + fixes
-        text = prompts.fix_brief(item, self.style_md, fixes, verdict.strengths, self.owned_sources(item), verdict.score)
+        text = prompts.fix_brief(item, self.plan, self.style_md, self.arch, fixes, verdict.strengths,
+                                 self.owned_sources(item), verdict.score)
         parts: list[dict] = [text_part(text)]
         imgs = (capture.images if capture else [])[:3]
         if imgs:
