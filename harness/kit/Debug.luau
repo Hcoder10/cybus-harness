@@ -175,6 +175,27 @@ local function builtinsClient()
 		end
 		return "camera set"
 	end, "place the camera: x,y,z, lookX,lookY,lookZ, fov; no args resets")
+	Debug.register("__move", function(x, z, seconds)
+		-- walk the local character: x/z relative to the camera (0, -1 = forward), for `seconds`
+		local player = Players.LocalPlayer
+		local deadline = os.clock() + math.clamp(tonumber(seconds) or 1, 0, 10)
+		task.spawn(function()
+			while os.clock() < deadline do
+				player:Move(Vector3.new(tonumber(x) or 0, 0, tonumber(z) or -1), true)
+				RunService.RenderStepped:Wait()
+			end
+			player:Move(Vector3.zero, true)
+		end)
+		return "moving"
+	end, "walk the character relative to the camera: x z seconds (0 -1 2 = forward for 2 s)")
+	Debug.register("__jump", function()
+		local hum = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+		if hum then
+			hum.Jump = true
+			return "jumped"
+		end
+		return "no humanoid"
+	end, "make the character jump")
 	Debug.register("__sound_manifest", function()
 		local ok, Sound = pcall(function()
 			return require(ReplicatedStorage:WaitForChild("Kit"):WaitForChild("Sound"))
@@ -205,15 +226,17 @@ end
 
 local function pollHarness(port, token)
 	local base = "http://127.0.0.1:" .. tostring(port) .. "/cybus/"
+	local session = HttpService:GenerateGUID(false)
 	local function post(route, body)
 		body.token = token
+		body.session = session
 		return pcall(HttpService.PostAsync, HttpService, base .. route, HttpService:JSONEncode(body),
 			Enum.HttpContentType.ApplicationJson)
 	end
 	post("hello", { place = game.PlaceId, t = os.clock() })
 	local failures = 0
 	while true do
-		local ok, body = pcall(HttpService.GetAsync, HttpService, base .. "next?token=" .. token, true)
+		local ok, body = pcall(HttpService.GetAsync, HttpService, base .. "next?token=" .. token .. "&session=" .. session, true)
 		if not ok then
 			failures += 1
 			task.wait(math.min(5, failures))

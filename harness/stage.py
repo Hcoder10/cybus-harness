@@ -41,7 +41,7 @@ from harness.tools.luau import check_sources, syntax_errors
 log = logging.getLogger("harness.stage")
 
 MARKER_NAME = "CybusHarnessRun"
-POLL_SECONDS = 15.0
+POLL_SECONDS = 5.0          # the bridge's own polls hold 2 s; an engine-side timeout loses a held command
 
 
 class StageError(RuntimeError):
@@ -67,6 +67,7 @@ class CommandServer:
         self._results: dict[str, asyncio.Future] = {}
         self.hello = asyncio.Event()
         self.last_hello: dict | None = None
+        self.session: str | None = None       # the play session whose polls may take commands
         self._server = None
         self._task: asyncio.Task | None = None
 
@@ -92,9 +93,10 @@ class CommandServer:
                 self._task.cancel()
 
     def reset(self) -> None:
-        """Forget queued commands and the last hello (a new play session starts clean)."""
-        while not self._queue.empty():
-            self._queue.get_nowait()
+        """Forget queued commands, the last hello and the session (a new play session starts clean). A fresh
+        queue, so a long poll still held by the previous session can never take the new session's commands."""
+        self._queue = asyncio.Queue()
+        self.session = None
         for fut in self._results.values():
             if not fut.done():
                 fut.set_exception(StageError("play session ended before the command answered"))
@@ -134,9 +136,17 @@ class CommandServer:
         if token != self.token:
             await self._reply(send, 403, {"error": "bad token"})
             return
+        session = query.get("session") or data.get("session")
+        if session and self.session is None:
+            self.session = session
+        if session and session != self.session:
+            await self._reply(send, 200, {})          # a previous play session's straggler: never hand it work
+            return
         if path == "/cybus/next" and method == "GET":
+            self.hello.set()                          # polling proves the game reached us, even if hello was lost
+            queue = self._queue
             try:
-                cmd = await asyncio.wait_for(self._queue.get(), POLL_SECONDS)
+                cmd = await asyncio.wait_for(queue.get(), POLL_SECONDS)
             except asyncio.TimeoutError:
                 cmd = {}
             await self._reply(send, 200, cmd)
@@ -180,27 +190,56 @@ def studio_exe() -> Path | None:
     return found[0] if found else None
 
 
-def maximize_windows_of(pid: int) -> int:
-    """Best effort: maximize the top-level windows of a process so captures are large. Returns how many."""
+def _window_title(hwnd) -> str:
+    import ctypes
+    user32 = ctypes.windll.user32
+    n = user32.GetWindowTextLengthW(hwnd)
+    buf = ctypes.create_unicode_buffer(n + 1)
+    user32.GetWindowTextW(hwnd, buf, n + 1)
+    return buf.value
+
+
+def studio_main_window() -> int | None:
+    """The window the bridge captures: the largest visible top-level window titled '... Roblox Studio'. Floating
+    plugin widgets (e.g. the bridge's own) are separate windows and are never picked."""
     if sys.platform != "win32":
-        return 0
+        return None
     import ctypes
     from ctypes import wintypes
     user32 = ctypes.windll.user32
-    hits: list[int] = []
+    best: list = [None, -1]
 
     @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
     def cb(hwnd, _):
-        owner = wintypes.DWORD()
-        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
-        if owner.value == pid and user32.IsWindowVisible(hwnd) and user32.GetWindowTextLengthW(hwnd) > 0:
-            hits.append(hwnd)
+        if user32.IsWindowVisible(hwnd) and "Roblox Studio" in _window_title(hwnd):
+            r = wintypes.RECT()
+            user32.GetWindowRect(hwnd, ctypes.byref(r))
+            area = (r.right - r.left) * (r.bottom - r.top)
+            if area > best[1]:
+                best[0], best[1] = hwnd, area
         return True
 
     user32.EnumWindows(cb, 0)
-    for hwnd in hits:
-        user32.ShowWindow(hwnd, 3)          # SW_MAXIMIZE
-    return len(hits)
+    return best[0]
+
+
+def maximize_studio() -> bool:
+    hwnd = studio_main_window()
+    if not hwnd:
+        return False
+    import ctypes
+    ctypes.windll.user32.ShowWindow(hwnd, 3)          # SW_MAXIMIZE
+    return True
+
+
+def studio_is_foreground() -> bool:
+    """True when the foreground window is Studio's main window (so OS-level keys and clicks land in Studio,
+    not in whatever the user is typing into)."""
+    if sys.platform != "win32":
+        return False
+    import ctypes
+    fg = ctypes.windll.user32.GetForegroundWindow()
+    return bool(fg) and "Roblox Studio" in _window_title(fg)
 
 
 def build_template(run_id: str, out: Path) -> Path:
@@ -374,7 +413,7 @@ class Stage:
         else:
             raise StageError(f"Studio did not connect to the bridge within {wait_seconds:.0f}s")
         await asyncio.sleep(2)
-        maximize_windows_of(proc.pid)
+        maximize_studio()
         await self.bridge.close()
         await self.bridge.connect()
         await self.verify_place()
@@ -384,12 +423,15 @@ class Stage:
         """Prove the linked Studio holds this run's place (marker), then point its game at our endpoint."""
         code = (f'local m = game:GetService("ServerStorage"):FindFirstChild("{MARKER_NAME}")\n'
                 f'if not m or m.Value ~= "{self.run_id}" then error("not this run\'s place", 0) end\n'
-                'game:GetService("HttpService").HttpEnabled = true\n'
                 f'game:GetService("ServerStorage"):SetAttribute("CybusHarnessPort", {self.server.port})\n'
                 f'game:GetService("ServerStorage"):SetAttribute("CybusHarnessToken", "{self.token}")\n'
-                'return "ok"')
+                'return "http=" .. tostring(game:GetService("HttpService").HttpEnabled)')
         res = await self.bridge.call("execution_run_luau", {"code": code})
-        if "ok" not in json.dumps(res):
+        text = json.dumps(res)
+        if "http=false" in text:
+            raise StageError("HTTP requests are disabled in this place, so the game cannot reach the harness: in Studio "
+                             "open Game Settings > Security, turn on Allow HTTP Requests, save (Ctrl+S) and relaunch")
+        if "http=true" not in text:
             raise StageError(f"place verification failed: {res}")
 
     async def edit(self, code: str, timeout_ms: int = 20000) -> dict:
@@ -409,10 +451,25 @@ class Stage:
         return result
 
     # ---- play
-    async def play(self, timeout: float = 90) -> None:
+    async def _start_play(self, attempts: int = 20) -> None:
+        """playtest_start, retried while Studio is still tearing down the previous session ('in progress')."""
+        from harness.tools.studio import StudioError
+        for i in range(attempts):
+            try:
+                await self.bridge.call("playtest_start", {"mode": "play"})
+                return
+            except StudioError as e:
+                msg = str(e).lower()
+                if i + 1 < attempts and any(k in msg for k in ("progress", "running", "already")):
+                    await asyncio.sleep(1)
+                    continue
+                raise
+        raise StageError("Studio kept refusing to start a play session")
+
+    async def play(self, timeout: float = 60) -> None:
         self.server.reset()
-        await self.bridge.call("playtest_start", {"mode": "play"})
-        self.playing = True
+        self.playing = True                   # from here on stop() must run, even if the start fails half way
+        await self._start_play()
         try:
             await asyncio.wait_for(self.server.hello.wait(), timeout)
         except asyncio.TimeoutError as e:
@@ -429,29 +486,50 @@ class Stage:
             if time.monotonic() > deadline:
                 raise StageError("no client answered the debug relay (did KitBoot.client run?)")
             await asyncio.sleep(1)
-        if self.crop is None:
-            await self.calibrate()
+        await self.calibrate()
 
-    async def stop(self) -> None:
+    async def stop(self, grace: float = 3.0) -> None:
+        """Signal the play session to end, then give Studio time to tear it down before the next start."""
         try:
-            await self.bridge.call("playtest_stop", {})
+            if self.playing:
+                await self.bridge.call("playtest_stop", {})
+                await asyncio.sleep(grace)
         finally:
             self.playing = False
             self.server.reset()
 
     async def cmd(self, line_or_name: str, *args: Any, timeout: float = 30) -> dict:
         name, parsed = (line_or_name, list(args)) if args else parse_command(line_or_name)
+        if not self.playing:
+            raise StageError(f"no play session is running (command {name!r})")
         if not name:
             return {"ok": False, "result": "empty command"}
         return await self.server.call(name, *parsed, timeout=timeout)
 
     async def calibrate(self) -> None:
+        """Find the game viewport in Studio's window (a full-screen magenta frame shown by the kit) every
+        session. A miss keeps the previous box only if the window is still the same size; the first miss fails."""
         r = await self.server.call("__marker", True)
         await asyncio.sleep(0.5)
         raw = await capture.screenshot(self.bridge)
+        box = magenta_bbox(raw)
+        if box and studio_is_foreground():
+            try:                               # one click on the marker gives the game view keyboard focus
+                await self.bridge.call("input_click", {"x": (box[0] + box[2]) // 2, "y": (box[1] + box[3]) // 2})
+            except Exception as e:  # noqa: BLE001
+                log.info("focus click failed: %s", e)
         await self.server.call("__marker", False)
         (self.captures_dir / "_calibration.png").write_bytes(raw)
-        self.crop = magenta_bbox(raw)
+        with Image.open(io.BytesIO(raw)) as im:
+            size = im.size
+        if box is None:
+            if self.crop is not None and size == getattr(self, "_calib_size", None):
+                log.warning("viewport marker not found this session; keeping the previous box")
+                return
+            raise StageError("could not find the game viewport in the Studio screenshot (is Studio visible and not "
+                             f"minimized? screenshot was {size[0]}x{size[1]}); see work/captures/_calibration.png")
+        self._calib_size = size
+        self.crop = box
         vp = None
         for rep in r.get("replies") or []:
             try:
@@ -459,8 +537,6 @@ class Stage:
             except (TypeError, ValueError):
                 pass
         self.viewport = tuple(vp) if vp else None
-        if not self.crop:
-            log.warning("could not find the viewport marker; captures will include Studio chrome")
 
     async def shot(self, label: str) -> bytes:
         png = crop_png(await capture.screenshot(self.bridge), self.crop)
@@ -482,11 +558,21 @@ class Stage:
                 log.warning("video strip failed (%s); using timed screenshots", e)
         if not frames:
             frames = await capture.frames(self.bridge, seconds, n)
+        if self.crop:
+            need = (self.crop[2], self.crop[3])
+            for f in frames:
+                with Image.open(io.BytesIO(f)) as im:
+                    if im.size[0] < need[0] or im.size[1] < need[1]:
+                        raise StageError(f"strip frame is {im.size[0]}x{im.size[1]}, smaller than the viewport box: "
+                                         "Studio was minimized or resized")
         frames = [crop_png(f, self.crop) for f in frames]
         self._save(label, frames)
         return frames
 
     async def key(self, key: str, hold_ms: int = 0) -> dict:
+        if not studio_is_foreground():
+            log.warning("skipped key %r: Studio is not the foreground window", key)
+            return {"skipped": True, "reason": "Studio is not the foreground window"}
         return await self.bridge.call("input_key", {"key": key, "action": "press", "hold_ms": hold_ms})
 
     async def logs(self) -> list[dict]:
@@ -519,8 +605,8 @@ class Stage:
         """Hold Studio: sync, play; always stop afterwards. Yields the sync result."""
         async with self.lock:
             synced = await self.sync()
-            await self.play()
             try:
+                await self.play()
                 yield synced
             finally:
                 await self.stop()

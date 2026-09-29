@@ -131,6 +131,49 @@ def test_command_server_roundtrip():
     asyncio.run(go())
 
 
+def test_command_server_sessions_and_stale_polls():
+    """A poll counts as hello; after reset() the previous session's poll can never take new commands."""
+    async def go():
+        srv = CommandServer("tok")
+        await srv.start()
+        try:
+            base = f"http://127.0.0.1:{srv.port}/cybus/"
+            async with httpx.AsyncClient(timeout=20) as http:
+                stale = asyncio.create_task(http.get(base + "next?token=tok&session=old"))
+                await asyncio.sleep(0.3)
+                assert srv.hello.is_set() and srv.session == "old"
+                srv.reset()                                            # the play session ended; a new one starts
+                assert not srv.hello.is_set() and srv.session is None
+                call = asyncio.create_task(srv.call("show_hud", timeout=10))
+                cmd = (await http.get(base + "next?token=tok&session=new")).json()
+                assert cmd.get("name") == "show_hud" and srv.session == "new"
+                assert (await stale).json() == {}                      # the old poll got nothing
+                late = (await http.get(base + "next?token=tok&session=old")).json()
+                assert late == {}                                      # and so does any later straggler
+                await http.post(base + "result", json={"token": "tok", "session": "new", "id": cmd["id"],
+                                                       "result": {"ok": True}})
+                assert (await call)["ok"] is True
+        finally:
+            await srv.stop()
+    asyncio.run(go())
+
+
+def test_final_place_builds_with_rojo(tmp_path: Path):
+    from harness.place import build_place, rojo_exe
+    from harness.tools.workspace import Workspace
+    if not rojo_exe():
+        pytest.skip("rojo not installed")
+    ws = Workspace(tmp_path / "ws")
+    for rel, src in kit_files().items():
+        ws.write(rel, src)
+    ws.write("StarterPlayer/StarterPlayerScripts/Hud.client.luau", "print('hud')\n")
+    out = build_place(ws.root, tmp_path / "final.rbxlx", "t", "run_x", STYLE)
+    xml = out.read_text(encoding="utf-8")
+    for needle in ("CybusHarnessRun", "HttpEnabled", "Atmosphere", "KitBoot", "Hud", "LocalScript", "ClockTime"):
+        assert needle in xml, needle
+    assert (ws.root / "default.project.json").exists()
+
+
 # ------------------------------------------------------------------------------------------------ dry run
 
 ARCH = {
@@ -338,7 +381,10 @@ def test_build_game_with_fake_stage(tmp_path: Path):
     assert (tmp_path / "logs" / "audio_events.log").read_text(encoding="utf-8").count("ui_click") == 1
     assert "round_started" in (tmp_path / "logs" / "playtest.log").read_text(encoding="utf-8")
     assert (tmp_path / "captures" / "audio_design__sound_map.png").exists()
-    assert "w" in stage.keys and ("place_save_as" in [c[0] for c in stage.bridge.calls])
+    assert "w" in stage.keys
+    from harness.place import rojo_exe
+    if rojo_exe():                                                  # the final place is built with rojo
+        assert (tmp_path / "place" / "final.rbxlx").exists() and report.get("place_file") is None
     labels = [json.loads(l).get("label") for l in (tmp_path / "journal.jsonl").read_text(encoding="utf-8").splitlines()
               if l.strip()]
     assert "fix:hud:0" in labels and "route_r0" in labels and "capture-director" in labels

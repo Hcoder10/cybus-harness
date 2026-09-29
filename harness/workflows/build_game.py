@@ -459,9 +459,11 @@ class Build:
             async with self.stage.lock:
                 await self.stage.edit(lighting_script(self.style))
                 synced = await self.stage.sync()
-                await self.stage.play()
-                logs = await self.stage.logs()
-                await self.stage.stop()
+                try:
+                    await self.stage.play()
+                    logs = await self.stage.logs()
+                finally:
+                    await self.stage.stop()
             errs = [l for l in logs if l.get("kind") == "error"]
             self.wf.log(f"scaffold booted: {len(synced.get('pushed', []))} files pushed, {len(errs)} errors")
             self.save("scaffold_boot.json", {"sync": synced, "logs": logs})
@@ -716,8 +718,8 @@ class Build:
         commands: dict = {}
         async with self.stage.lock:
             await self.stage.sync()
-            await self.stage.play()
             try:
+                await self.stage.play()
                 commands = await self.live_commands()
                 script = await wf.agent(prompts.director_brief(self.plan, self.arch, self.items, wanted, commands),
                                         role="lead", system=prompts.LEAD_SYSTEM, schema=schemas.CAPTURE_SCRIPT,
@@ -758,11 +760,12 @@ class Build:
             for it in self.items:
                 v = await self.assess(it, caps[it["id"]], 99)
                 final[it["id"]] = {"aspect": it["aspect"], "score": v.score, "passed": v.passed}
-            try:
-                out = self.run_dir / "place" / "final.rbxl"
-                await self.stage.bridge.call("place_save_as", {"path": str(out.resolve()), "overwrite": True})
-            except Exception as e:  # noqa: BLE001
-                self.wf.log(f"could not save the place: {e}")
+        try:                                   # the bridge cannot save places: build the final one with rojo
+            from harness.place import build_place
+            build_place(self.ws.root, self.run_dir / "place" / "final.rbxlx", self.plan.get("title") or "game",
+                        style=self.style)
+        except Exception as e:  # noqa: BLE001
+            self.wf.log(f"could not build the final place: {e}")
         by_aspect: dict[str, list[float]] = {}
         for r in final.values():
             by_aspect.setdefault(r["aspect"], []).append(r["score"])
@@ -831,9 +834,10 @@ async def run_build(idea: dict, run_dir: Path, *, cfg: BuildConfig | None = None
         except ImportError:
             log.warning("clip authoring unavailable (harness.tools.anim missing)")
         report = await build.run(idea, evidence_plan)
-        final = run_dir / "place" / "final.rbxl"
+        final = run_dir / "place" / "final.rbxlx"
         if final.exists():
             report["place_file"] = str(final)
+            report["rojo_project"] = str(ws.root / "default.project.json")
         return report
     finally:
         if stage is not None:
