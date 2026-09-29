@@ -52,9 +52,10 @@ def lighting_node(style: dict | None) -> dict:
         if not props:
             continue
         out = {}
+        from harness.tokens import effect_value
         for k, v in props.items():
             if isinstance(v, (int, float)) and not isinstance(v, bool):
-                out[str(k)] = float(v)
+                out[str(k)] = effect_value(cls, str(k), float(v), [])
             elif isinstance(v, str) and v.strip().startswith("#"):
                 out[str(k)] = _color(v)
         node[name] = {"$className": cls, "$properties": out}

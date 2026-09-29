@@ -44,6 +44,74 @@ def _num(v, fallback: float, lo: float, hi: float, problems: list[str], name: st
     return x
 
 
+# The font families Roblox ships (content/fonts/families/*.json). Anything else silently falls back at runtime.
+ROBLOX_FONTS = ("AccanthisADFStd", "AmaticSC", "Arimo", "Balthazar", "Bangers", "BuilderExtended", "BuilderMono",
+                "BuilderSans", "ComicNeueAngular", "Creepster", "DenkOne", "Fondamento", "FredokaOne", "GrenzeGotisch",
+                "Guru", "HighwayGothic", "Inconsolata", "IndieFlower", "JosefinSans", "Jura", "Kalam", "LuckiestGuy",
+                "Merriweather", "Michroma", "Montserrat", "Nunito", "Oswald", "PatrickHand", "PermanentMarker",
+                "PressStart2P", "Roboto", "RobotoCondensed", "RobotoMono", "RomanAntique", "Sarpanch", "SourceSansPro",
+                "SpecialElite", "TitilliumWeb", "Ubuntu", "Zekton")
+# Enum.Font names that are not family names, mapped to the family (and weight) they render with.
+FONT_ALIASES = {"Gotham": ("Montserrat", None), "GothamMedium": ("Montserrat", "Medium"),
+                "GothamBold": ("Montserrat", "Bold"), "GothamBlack": ("Montserrat", "Heavy"),
+                "GothamSemibold": ("Montserrat", "SemiBold"), "SourceSans": ("SourceSansPro", None),
+                "SourceSansBold": ("SourceSansPro", "Bold"), "SourceSansSemibold": ("SourceSansPro", "SemiBold"),
+                "SourceSansLight": ("SourceSansPro", "Light"), "Arial": ("Arimo", None), "ArialBold": ("Arimo", "Bold"),
+                "SciFi": ("Zekton", None), "Cartoon": ("ComicNeueAngular", None), "Code": ("Inconsolata", None),
+                "Highway": ("HighwayGothic", None), "Fantasy": ("Guru", None), "Antique": ("RomanAntique", None),
+                "Garamond": ("AccanthisADFStd", None), "Bodoni": ("AccanthisADFStd", None),
+                "BuilderSansMedium": ("BuilderSans", "Medium"), "BuilderSansBold": ("BuilderSans", "Bold"),
+                "BuilderSansExtraBold": ("BuilderSans", "ExtraBold"), "MontserratBold": ("Montserrat", "Bold"),
+                "MontserratBlack": ("Montserrat", "Heavy"), "SourceSansPro": ("SourceSansPro", None)}
+# Closest shipped family for a font that does not exist, by the kind of face its name suggests.
+_FONT_KINDS = (("mono", "RobotoMono"), ("code", "RobotoMono"), ("typewriter", "SpecialElite"), ("cutive", "SpecialElite"),
+               ("courier", "SpecialElite"), ("hand", "PatrickHand"), ("script", "Kalam"), ("marker", "PermanentMarker"),
+               ("pixel", "PressStart2P"), ("8bit", "PressStart2P"), ("serif", "Merriweather"), ("slab", "Merriweather"),
+               ("gothic", "GrenzeGotisch"), ("horror", "Creepster"), ("comic", "Bangers"), ("round", "FredokaOne"),
+               ("condensed", "RobotoCondensed"), ("display", "FredokaOne"), ("tech", "Michroma"), ("future", "Michroma"))
+
+
+def resolve_font(name: str) -> tuple[str, str | None, str | None]:
+    """-> (family, weight override or None, problem note or None) for a style guide's font name."""
+    n = str(name or "").strip()
+    if n.startswith("rbxasset") or n.startswith("rbxassetid"):
+        return n, None, None
+    for fam in ROBLOX_FONTS:
+        if n.lower() == fam.lower():
+            return fam, None, None
+    for alias, (fam, weight) in FONT_ALIASES.items():
+        if n.lower() == alias.lower():
+            return fam, weight, None
+    low = n.lower()
+    for key, fam in _FONT_KINDS:
+        if key in low:
+            return fam, None, f"font {n!r} is not a Roblox font; used {fam}"
+    return "BuilderSans", None, f"font {n!r} is not a Roblox font; used BuilderSans"
+
+
+# Valid ranges of the post-effect properties a style guide sets; out-of-range values are clamped (Roblox would
+# clamp them anyway, often to something ugly: an Atmosphere Density of 12 becomes 1, a white-out fog).
+EFFECT_RANGES = {
+    "Atmosphere": {"Density": (0, 1), "Offset": (0, 1), "Glare": (0, 10), "Haze": (0, 10)},
+    "ColorCorrectionEffect": {"Brightness": (-1, 1), "Contrast": (-1, 1), "Saturation": (-1, 1)},
+    "BloomEffect": {"Intensity": (0, 2), "Size": (0, 56), "Threshold": (0, 4)},
+}
+
+
+def effect_value(cls: str, prop: str, value: float, problems: list[str]) -> float:
+    lo_hi = EFFECT_RANGES.get(cls, {}).get(prop)
+    if lo_hi is None:
+        return value
+    lo, hi = lo_hi
+    if not lo <= value <= hi:
+        if (lo, hi) == (0, 1) and 1 < value <= 100:          # a 0-1 property written as a percentage
+            problems.append(f"{cls}.{prop}={value:g} read as {value:g}% = {value / 100:g}")
+            return value / 100
+        problems.append(f"{cls}.{prop}={value:g} outside [{lo}, {hi}]; clamped")
+        return min(hi, max(lo, value))
+    return value
+
+
 def _font(spec: str, default_weight: str) -> tuple[str, str]:
     """'Montserrat:Bold' / 'GothamBlack' / 'rbxasset://fonts/families/X.json:Bold' -> (family-or-enum, weight)."""
     s = str(spec or "").strip()
@@ -72,8 +140,13 @@ def build_tokens(style: dict) -> tuple[str, list[str]]:
             colors[_key(k)] = _hex(v, "#FF00FF", p, k)
 
     fonts_in = style.get("fonts") or {}
-    fonts = {role: _font(fonts_in.get(role, ""), w) for role, w in
-             (("display", "Bold"), ("heading", "Bold"), ("body", "Regular"), ("numeric", "SemiBold"))}
+    fonts = {}
+    for role, w in (("display", "Bold"), ("heading", "Bold"), ("body", "Regular"), ("numeric", "SemiBold")):
+        fam, weight = _font(fonts_in.get(role, ""), w)
+        fam2, weight2, note = resolve_font(fam)
+        if note:
+            p.append(f"fonts.{role}: {note}")
+        fonts[role] = (fam2, weight2 or weight)
 
     sizes = dict(DEFAULT_SIZES)
     for k, v in (style.get("type_scale") or {}).items():
@@ -156,8 +229,8 @@ def lighting_script(style: dict) -> str:
         lines.append(f"do local x = ensure({_lua_str(cls)}, {_lua_str(name)})")
         for k, v in props.items():
             k = _key(k)
-            if isinstance(v, (int, float)):
-                lines.append(f"\tpcall(function() x.{k} = {float(v):g} end)")
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                lines.append(f"\tpcall(function() x.{k} = {effect_value(cls, k, float(v), p):g} end)")
             elif isinstance(v, str) and _HEX.match(v.strip()):
                 lines.append(f"\tpcall(function() x.{k} = Color3.fromHex({_lua_str(_hex(v, '#FFFFFF', p, k))}) end)")
         lines.append("end")

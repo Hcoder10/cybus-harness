@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 
 from harness.judge import playbook
+from harness.tokens import ROBLOX_FONTS
 
 BAR = ("THE BAR: a cohesive, AAA-feeling Roblox game on the studio scale (1 broken, 4 hobby, 7 strong "
        "front-page, 9 the bar). Custom visual language everywhere, cinematic camera, layered VFX and audio, tuned "
@@ -95,9 +96,12 @@ STYLE_ANGLES = (
 def style_brief(plan: dict, angle: str | None = None) -> str:
     return (f"GAME PLAN\n{compact_json(plan, 4000)}\n\nSTYLE GUIDE TEMPLATE\n{playbook('style_guide')}\n\n"
             + (f"DIRECTION TO EXPLORE: {angle}\n\n" if angle else "")
-            + "Write this game's style guide with submit. Fonts: Roblox font names (Enum.Font names such as "
-            "GothamBlack, FredokaOne, Michroma, Bangers, Oswald, Roboto, TitilliumWeb, LuckiestGuy, Sarpanch, "
-            "BuilderSans; optionally ':Weight', e.g. 'Montserrat:Bold'). Palette: #RRGGBB with the required roles "
+            + "Write this game's style guide with submit. Fonts: ONLY these Roblox font families (anything else "
+            f"falls back to a default at runtime): {', '.join(ROBLOX_FONTS)}; optionally ':Weight' "
+            "(Thin, Light, Regular, Medium, SemiBold, Bold, ExtraBold, Heavy), e.g. 'Montserrat:Bold'. "
+            "Lighting post effects use Roblox ranges: Atmosphere Density/Offset 0-1, Haze/Glare 0-10; "
+            "ColorCorrection Brightness/Contrast/Saturation -1..1; Bloom Intensity 0-2, Size 0-56, Threshold 0-4. "
+            "Palette: #RRGGBB with the required roles "
             "plus any game-specific tokens. reference_shots: 3-4 image-generation prompts for concept frames of the "
             "key screens and moments (title screen, gameplay with HUD, the signature moment), each a complete, "
             "specific description in the style guide's language, framed as a Roblox game screenshot.")

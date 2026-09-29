@@ -30,7 +30,8 @@ PLAN = {
         "content": {"type": "array", "items": {"type": "object", "properties": {
             "kind": _str, "name": _str, "source": {"type": "string", "enum": ["generated_art", "built", "library", "procedural"]}},
             "required": ["kind", "name", "source"]}},
-        "aspects": {"type": "object", "additionalProperties": _str},
+        "aspects": {"type": "object", "properties": {a: _str for a in ASPECTS}, "required": list(ASPECTS),
+                    "description": "what 'done' looks like for this game, for each of the 12 aspects"},
         "risks": _strs,
     },
     "required": ["title", "fantasy", "hook", "core_loop", "verbs", "signature_moment", "first_minute", "systems",
