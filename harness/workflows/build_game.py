@@ -247,6 +247,15 @@ class Build:
         return [png for name, png in self.refs.items() if any(k in name for k in keys)][:2]
 
     # ------------------------------------------------------------------ tools for builders
+    TOOL_ASPECTS = {"paint_texture": "texture_spec", "list_textures": "texture_spec",
+                    "author_clip": "animation_spec", "list_clips": "animation_spec"}
+
+    @classmethod
+    def tool_fits(cls, tool_name: str, aspect: str) -> bool:
+        """Spec tools go only to the aspects whose briefs carry their spec reference (fewer tools, less confusion)."""
+        spec = cls.TOOL_ASPECTS.get(tool_name)
+        return spec is None or aspect in prompts.SPEC_PLAYBOOKS.get(spec, set())
+
     def builder_tools(self, item: dict) -> list[Tool]:
         owned = set(item["files"])
         ws = self
@@ -328,7 +337,7 @@ class Build:
             Tool("list_files", "List every project file and who owns it.", {**s, "properties": {}}, list_files),
             Tool("check_code", "Check your files for syntax errors and likely bugs.", {**s, "properties": {}}, check_code),
         ]
-        tools += self.audio.tools() + list(self.extra_tools)
+        tools += self.audio.tools() + [t for t in self.extra_tools if self.tool_fits(t.name, item["aspect"])]
         if self.imagegen is not None and self.imagegen.enabled and self.assets is not None:
             async def generate_image(name: str, prompt: str, kind: str = "icon") -> ToolResult:
                 try:
