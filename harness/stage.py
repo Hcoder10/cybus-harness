@@ -331,7 +331,7 @@ class Stage:
         self.lock = asyncio.Lock()
         self.crop: tuple[int, int, int, int] | None = None
         self.viewport: tuple[int, int] | None = None
-        self.captures_dir = self.run_dir / "captures"
+        self.captures_dir = self.run_dir / "work" / "captures"
         self.captures_dir.mkdir(parents=True, exist_ok=True)
         self._shots = 0
         self.playing = False
@@ -504,10 +504,15 @@ class Stage:
             return []
 
     def _save(self, label: str, images: list[bytes]) -> None:
+        """Working captures, as JPEG to spare the disk (the judges get the PNG bytes in memory)."""
         safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in label)[:80]
         for i, im in enumerate(images):
             self._shots += 1
-            (self.captures_dir / f"{self._shots:04d}_{safe}_{i}.png").write_bytes(im)
+            try:
+                with Image.open(io.BytesIO(im)) as pic:
+                    pic.convert("RGB").save(self.captures_dir / f"{self._shots:04d}_{safe}_{i}.jpg", quality=85)
+            except OSError as e:
+                log.warning("could not save capture %s: %s", label, e)
 
     @asynccontextmanager
     async def session(self):

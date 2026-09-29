@@ -1,0 +1,221 @@
+# New-genre benchmark ideas.
+#
+# The question: can a model running inside this harness build a complete Roblox game from a NEW idea
+# at a quality on par with (or slightly below) the owner's reference bar?
+#
+# Rules for this file (enforced by bench/spec.py and tests/test_bench.py):
+# - Nothing here may resemble the owner's reference game. The banned-term list lives in
+#   bench/spec.py (BANNED_TERMS) and is checked against every string in this file, comments included.
+# - `pitch` is ONE paragraph and is the only input the harness gets (with `id` and `title`).
+# - `genre`, `craft_focus` and `done` are the scorer's and the reviewer's, never the builder's.
+# - `done` has exactly these keys: core_loop, title_menu, hud, signature_moment, audio_feel.
+# - `craft_focus` names the aspects (bench/aspects.yaml) the idea stresses hardest; across all ideas
+#   they cover every aspect once or more.
+
+ideas:
+  - id: lakeside_fishing
+    title: Hearthwater Hollow
+    genre: cozy life sim / fishing
+    craft_focus: [world_art, ui_menus, characters]
+    pitch: >-
+      Hearthwater Hollow is a cozy fishing life sim set in a lantern-lit lake village in late autumn.
+      The player arrives by ferry with a borrowed rod and a rundown lakeside cabin, fishes at four spots
+      (the village dock, a lily-pad marsh, a waterfall pool and a moonlit pier that only opens at night),
+      sells the catch at the market stall, and spends coins on better rods, bait and cabin furniture.
+      A twelve-minute day/night cycle and a light rain-and-fog weather system change which of the twelve
+      fish species bite; every species has a rarity tier, a size range, a hand-painted journal card and a
+      short written entry, and the journal shows silhouettes of fish not yet caught. Casting uses a power
+      meter and reeling is a tension minigame in which the line strains while the fish pulls and must be
+      eased off before it snaps. Landing a legendary fish at night mounts a trophy on the cabin wall. Up
+      to six players share the lake and see each other's catches pop up as they land.
+    done:
+      core_loop: >-
+        From a fresh start the player can cast, hook, reel in and land fish at all four spots, sell them,
+        buy a better rod or bait that measurably changes what bites, and place at least one piece of
+        furniture in the cabin; time of day and weather visibly change the catch table.
+      title_menu: >-
+        A title screen over a slow flyover of the lake with Play and Settings, then an arrival sequence
+        (the ferry docking) that hands control to the player.
+      hud: >-
+        Coins, time of day and weather, equipped bait, a compact catch toast; the cast power meter and
+        reel tension bar are clear at a glance; the journal and the shop are full custom panels.
+      signature_moment: >-
+        Landing a rare fish at night: the reel struggle builds, music and camera tighten, and a catch
+        reveal card (name, size, rarity, first-catch flag) lands with splash and sparkle effects before
+        the fish is added to the journal.
+      audio_feel: >-
+        Layered lake ambience that changes between day, night and rain, gentle music that shifts at night,
+        distinct cast, plop, bite, reel and splash sounds; casting and reeling feel weighty and readable,
+        never twitchy.
+
+  - id: canyon_rally
+    title: Red Mesa Rally
+    genre: arcade off-road racing
+    craft_focus: [game_feel, camera, vfx]
+    pitch: >-
+      Red Mesa Rally is an arcade off-road racer through a sun-baked desert canyon at golden hour. The
+      player picks one of four rally buggies, each with its own balance of top speed, grip and boost, then
+      races three laps against seven AI drivers on one of two tracks: a winding canyon circuit with a big
+      jump over a dry riverbed, and a mesa-top sprint built around long sweeping drifts. Holding a drift
+      fills a boost meter, and boost pads and airtime top it up. Tires kick up dust and leave skid marks,
+      and the chase camera widens its field of view as speed climbs. Every race starts with a countdown
+      over revving engines; a live position tracker and a minimap keep the player oriented; the finish
+      shows a results podium, lap times and the player's personal best. Solo races fill the grid with AI,
+      and players in the same server can line up together for the next heat.
+    done:
+      core_loop: >-
+        Pick a buggy and a track, race three full laps against AI drivers that follow the racing line and
+        sometimes overtake, cross the line, see the results, and return to the garage to race again; lap
+        counting and positions stay correct after corner cuts, crashes and respawns.
+      title_menu: >-
+        A title screen with a garage backdrop, a buggy select screen with stat bars and a rotating 3D
+        preview, and a track select screen with a preview of each track.
+      hud: >-
+        Speedometer, boost meter, lap counter, race position (for example 3/8), race timer with last and
+        best lap, a minimap with rival markers, a wrong-way warning, and a 3-2-1-GO countdown.
+      signature_moment: >-
+        The riverbed jump: the buggy launches off the ramp, the camera lifts to frame the airtime, dust and
+        speed lines trail behind, and the landing thumps down with a boost reward.
+      audio_feel: >-
+        Engine pitch follows RPM through gear shifts, tires squeal in drifts, gravel and dust surface
+        sounds, wind at speed, an energetic race track; drifting is controllable and satisfying, and
+        collisions push the buggy aside instead of stopping it dead.
+
+  - id: observatory_escape
+    title: Blackout at Kestrel Peak
+    genre: first-person horror escape
+    craft_focus: [audio_design, world_art, animation]
+    pitch: >-
+      Blackout at Kestrel Peak is a first-person horror escape set in a snowbound mountain observatory at
+      night. The player is the last astronomer on shift when the power fails and something starts moving
+      through the dark. To escape on the cable car they must restore power in three breaker rooms, piece
+      together the control-room code from notes, a whiteboard and a flickering terminal, and ride the cable
+      car down before dawn. The only light is a flashlight with a draining battery, and spare batteries are
+      rare. A tall, silent creature called the Watcher patrols the halls, investigates noises and stalks the
+      player on sight; the player can hide in lockers and under desks, hold their breath, and must break
+      line of sight to lose it. Being caught ends the attempt with a short scare and restarts at the last
+      breaker with progress kept. The telescope dome is the centerpiece: its shutter groans open onto a
+      star field, with the Watcher's silhouette waiting in the slit.
+    done:
+      core_loop: >-
+        The player can explore, restore all three breakers, solve the control-room code and escape on the
+        cable car to an ending screen; the Watcher patrols, reacts to noise and light, gives chase, can be
+        escaped by hiding or breaking line of sight, and a catch respawns the player at the last checkpoint.
+      title_menu: >-
+        A title screen with the observatory in a snowstorm, a settings screen with brightness calibration,
+        and a short opening scene that sets up the blackout.
+      hud: >-
+        A minimal HUD: flashlight battery, the current objective line, interaction prompts and a subtle
+        hiding and breath indicator; notes open in a readable full-screen view.
+      signature_moment: >-
+        The first encounter: the corridor lights die, the Watcher appears at the far end, the music cuts to
+        a sting, the camera shakes as the player sprints, and the chase ends in a hiding spot while the
+        creature passes close by.
+      audio_feel: >-
+        Wind and building creaks, spatialized creature footsteps, distinct breaker, door and terminal
+        sounds, heartbeat and breathing when it is near, silence used on purpose; walking and flashlight
+        sway feel grounded, never floaty.
+
+  - id: wildfire_command
+    title: Emberline
+    genre: real-time strategy / tower defense
+    craft_focus: [hud, core_loop, vfx]
+    pitch: >-
+      Emberline is a top-down real-time strategy game about containing wildfires before they reach a
+      valley town. Each of three missions opens on a forested valley with a wind direction, a dryness level
+      and a forecast of where the fire will start. Before and during the burn the player spends a budget to
+      place and upgrade defenses on a grid: firebreaks that clear fuel, water towers that soak a radius,
+      sprinkler lines, and lookout posts that reveal smoke early. Three abilities on cooldowns call a
+      water-bomber run along a line the player draws, light a controlled backburn ahead of the front, and
+      evacuate one district to save its residents. Fire spreads cell by cell according to fuel, slope and
+      wind, and the wind can shift mid-mission. A mission is won when the fire burns out with enough of the
+      town standing, earning up to three stars and unlocking the next valley and new defenses. Seen from
+      above, fuel types, burning cells, scorched ground and the town read clearly at a glance.
+    done:
+      core_loop: >-
+        Play a mission from briefing to result: place and upgrade defenses within the budget, use all three
+        abilities, watch the fire spread by fuel, slope and wind (including one wind shift), and finish with
+        a star rating that unlocks the next valley; a lost mission can be retried at once.
+      title_menu: >-
+        A title screen over a smoky valley vista, a mission select map with locked and unlocked valleys and
+        earned stars, a pre-mission briefing with the forecast, and a pause menu.
+      hud: >-
+        Budget, a wind compass with strength, town-standing percentage, fire size and elapsed time, a build
+        bar with costs and hotkeys, ability buttons with cooldown sweeps, and placement previews that show
+        coverage radius and invalid cells.
+      signature_moment: >-
+        The wind shift: an alert sounds, the sky and light turn orange, the fire front leaps toward the
+        town, and a well-timed water-bomber run drops a visible curtain of water that knocks the front down
+        while the camera tracks the plane.
+      audio_feel: >-
+        Crackling fire that swells with its size, wind gusts, radio barks for alerts, satisfying placement
+        thunks, a plane flyby; the strategy camera pans, zooms and rotates smoothly with edge scrolling and
+        keys, and placement snaps cleanly to the grid.
+
+  - id: rhythm_obby
+    title: Tempo Spire
+    genre: rhythm platformer (obby)
+    craft_focus: [game_feel, audio_design, cohesion]
+    pitch: >-
+      Tempo Spire is a rhythm platformer: an obstacle course spiralling up a tower of floating clockwork
+      islands where the whole level moves to the music. Platforms extend and retract on the beat, bridges
+      fold out every other bar, bounce pads fire on the downbeat and sweeping hazards swing in time, so
+      reading the music is how the player gets through. The climb has three stages at rising tempo (90, 110
+      and 128 BPM), each with its own track, palette and new mechanic, linked by checkpoints. Jumping on the
+      beat gives a small speed boost and a ring pulse around the player, and a streak counter rewards
+      staying on rhythm. Falling returns the player to the last checkpoint without restarting the music. A
+      speedrun timer, per-stage best times and a server leaderboard give reasons to replay, and the summit
+      ends with a slow-motion leap to a giant bell that rings out the final chord.
+    done:
+      core_loop: >-
+        Climb all three stages from start to summit with checkpoints; every moving element is driven by one
+        beat clock locked to the music's playback position with no drift over a full stage; the on-beat
+        boost, streak counter, timer, respawn and per-stage best times all work.
+      title_menu: >-
+        A title screen with the spire and a logo pulsing on the beat, a stage select with best times,
+        settings with music and effects volume plus an audio-latency offset, and an end screen with total
+        time and stats.
+      hud: >-
+        Stage and checkpoint progress, the timer, the streak counter, a beat indicator that helps timing,
+        and a brief on-beat or off-beat flash on each jump.
+      signature_moment: >-
+        The stage-three finale: the music drops, the tower reconfigures around the player, a chain of
+        on-beat launch pads carries them upward, and the final leap to the bell goes into slow motion as the
+        chord hits.
+      audio_feel: >-
+        The music is the level: three distinct tracks at the stated tempos, effects quantized to the beat
+        where it matters, crisp jump, land and boost sounds; movement is tight, with coyote time and jump
+        buffering so every miss feels fair.
+
+  - id: sky_minigolf
+    title: Skyputt Party
+    genre: social party / mini golf
+    craft_focus: [camera, hud, polish]
+    pitch: >-
+      Skyputt Party is a social mini-golf game for one to eight players on nine holes floating above the
+      clouds, each built from a giant toy: a pinball flipper lane, a spinning top, a xylophone bridge that
+      plays notes as the ball rolls across, a windmill, a sandbox, a train-set loop and more. Everyone
+      putts at the same time as ghost balls that pass through each other, aiming with a drag-to-aim arrow
+      and a power meter; the camera orbits the ball while aiming and follows it after the shot. A hole ends
+      when every player has sunk the ball or a shot clock runs out, and then everyone is carried to the next
+      hole. Players customize ball color and trail in the lobby, react to each other with emotes and quick
+      stickers between shots, and track par and strokes on a live scorecard. The round ends in a podium
+      ceremony with confetti and fun awards such as fewest strokes, longest putt and most bounces.
+    done:
+      core_loop: >-
+        Join the lobby, start a round solo or with others, play all nine holes with correct stroke counting,
+        par, out-of-bounds resets and a shot clock, then see the podium and return to the lobby for another
+        round.
+      title_menu: >-
+        A title screen, a lobby island with a start pad and ball customization (colors and trails), and a
+        round-start sequence that flies the camera over the first hole.
+      hud: >-
+        Hole number and par, current strokes, the power meter and aim arrow, a live mini scoreboard of all
+        players, the shot clock, and a full scorecard between holes.
+      signature_moment: >-
+        A hole-in-one: slow motion as the ball drops, a burst of confetti and fireworks over the cup, a
+        stinger and a crowd cheer, and a banner announced to every player in the round.
+      audio_feel: >-
+        A crisp putt sound scaled by power, distinct rolling sounds per surface, playful sounds for each
+        hole's toy gimmick, cheerful music that ducks while aiming; ball physics feel predictable, with
+        consistent friction and no jitter.

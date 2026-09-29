@@ -57,6 +57,8 @@ class BuildConfig:
     plan_critique: bool = True
     reference_board: bool = True
     integrate: bool = True
+    deadline: float | None = None       # unix time; polish rounds stop early to leave room for the report
+    reserve_seconds: float = 1800       # time kept back before the deadline for the final report and evidence
 
 
 def _canon(path: str) -> str:
@@ -102,6 +104,23 @@ def stub_source(path: str, responsibility: str, api: str) -> str:
     if info.class_name == "ModuleScript":
         return head + "local M = {}\nreturn M\n"
     return head
+
+
+def text_image(title: str, text: str, width: int = 1400, max_lines: int = 120) -> bytes:
+    """Render text as a PNG (for evidence a vision judge reads: sound maps, manifests)."""
+    from PIL import Image, ImageDraw, ImageFont
+    lines = [title, ""] + [line[:160] for line in text.splitlines()][:max_lines]
+    try:
+        font = ImageFont.truetype("consola.ttf", 16)
+    except OSError:
+        font = ImageFont.load_default()
+    im = Image.new("RGB", (width, 24 + 20 * len(lines)), (20, 22, 26))
+    d = ImageDraw.Draw(im)
+    for i, line in enumerate(lines):
+        d.text((16, 12 + 20 * i), line, fill=(230, 232, 236) if i else (255, 200, 90), font=font)
+    buf = io.BytesIO()
+    im.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def normalize_arch(arch: dict, max_items: int) -> tuple[dict, list[str]]:
@@ -172,6 +191,9 @@ class Build:
         self.verdicts: dict[str, list[dict]] = {}
         self.captures: dict[str, Any] = {}
         self.done: dict[str, asyncio.Event] = {}
+        from harness.tools.audio import AudioSearch
+        self.audio = AudioSearch(self.run_dir / "audio_cache.json")
+        self.extra_tools: list[Tool] = []          # e.g. paint_texture / list_textures from harness.tools.art
         self.item_lock: dict[str, asyncio.Lock] = {}
         (self.run_dir / "verdicts").mkdir(parents=True, exist_ok=True)
 
@@ -306,6 +328,7 @@ class Build:
             Tool("list_files", "List every project file and who owns it.", {**s, "properties": {}}, list_files),
             Tool("check_code", "Check your files for syntax errors and likely bugs.", {**s, "properties": {}}, check_code),
         ]
+        tools += self.audio.tools() + list(self.extra_tools)
         if self.imagegen is not None and self.imagegen.enabled and self.assets is not None:
             async def generate_image(name: str, prompt: str, kind: str = "icon") -> ToolResult:
                 try:
@@ -563,6 +586,9 @@ class Build:
             return
         wf = self.wf
         for rnd in range(self.cfg.polish_rounds):
+            if self.out_of_time():
+                wf.log("polish stopped: the deadline is near")
+                break
             wf.phase("Polish" if rnd else "Integrate")
             caps = await self.capture_all(f"game_r{rnd}")
             sheet_imgs, labels = [], []
@@ -612,6 +638,107 @@ class Build:
                 await self.build_agent(it, brief, f"polish:{iid}:{rnd}", prompts.FIXER_SYSTEM)
             await wf.parallel([lambda i=i, e=e: fix(i, e) for i, e in routed.items()])
 
+    def out_of_time(self) -> bool:
+        return bool(self.cfg.deadline) and time.time() > self.cfg.deadline - self.cfg.reserve_seconds
+
+    async def live_commands(self) -> dict:
+        """Debug commands actually registered in the running game, server and client."""
+        out: dict = {}
+        for name in ("__list", "__client_list"):
+            try:
+                r = await self.stage.cmd(name)
+            except Exception:  # noqa: BLE001
+                continue
+            texts = [r.get("result")] + [rep.get("result") for rep in (r.get("replies") or [])[:1]]
+            for t in texts:
+                try:
+                    out.update(json.loads(t or "{}"))
+                except (TypeError, ValueError):
+                    pass
+        return {k: v for k, v in out.items() if not str(k).startswith("__")}
+
+    _EVIDENCE_FILE = re.compile(r"^captures/[a-z0-9_+]+__[A-Za-z0-9_\-]+(\.png)?$")
+
+    async def run_shot(self, shot: dict) -> dict:
+        file = str(shot.get("file", "")).strip().replace("\\", "/")
+        if not self._EVIDENCE_FILE.match(file):
+            return {"file": file, "ok": False, "error": "not a captures/<aspect>__<name> path"}
+        base = file[:-4] if file.endswith(".png") else file
+        results = []
+        for line in shot.get("commands") or []:
+            try:
+                results.append({"command": line, **(await self.stage.cmd(line))})
+            except Exception as e:  # noqa: BLE001
+                results.append({"command": line, "ok": False, "result": str(e)})
+        keys = [k for k in (shot.get("keys") or []) if isinstance(k, dict) and k.get("key")][:12]
+        await asyncio.sleep(max(0.2, min(6.0, float(shot.get("settle") or 1.0))))
+        label = base.split("/", 1)[1]
+        try:
+            if shot.get("kind") == "strip":
+                seconds = max(0.5, min(12.0, float(shot.get("seconds") or 2.0)))
+                n = max(2, min(16, int(shot.get("frames") or 8)))
+                task = asyncio.create_task(self.stage.strip(seconds, n, label))
+                await asyncio.sleep(0.15)
+                for k in keys:
+                    await self.stage.key(str(k["key"]), int(k.get("hold_ms") or 0))
+                frames = await task
+                for i, png in enumerate(frames):
+                    (self.run_dir / f"{base}__{i:02d}.png").write_bytes(png)
+                return {"file": base, "ok": bool(frames), "frames": len(frames), "commands": results}
+            for k in keys:
+                await self.stage.key(str(k["key"]), int(k.get("hold_ms") or 0))
+            png = await self.stage.shot(label)
+            (self.run_dir / f"{base}.png").write_bytes(png)
+            return {"file": f"{base}.png", "ok": True, "commands": results}
+        except Exception as e:  # noqa: BLE001
+            return {"file": file, "ok": False, "error": str(e), "commands": results}
+
+    async def evidence(self, plan: dict) -> dict:
+        """The benchmark's evidence, captured in one play session from a script the lead writes against the
+        game's registered debug commands. Logs come from the kit: events, output, and every sound played."""
+        wf = self.wf
+        wf.phase("Evidence")
+        (self.run_dir / "captures").mkdir(exist_ok=True)
+        (self.run_dir / "logs").mkdir(exist_ok=True)
+        wanted = [{"file": e.get("file"), "kind": e.get("kind"), "what": e.get("what"),
+                   "required": e.get("required", False), "frames": e.get("frames")}
+                  for e in plan.get("items", []) if e.get("kind") in ("still", "strip")]
+        done: list[dict] = []
+        commands: dict = {}
+        async with self.stage.lock:
+            await self.stage.sync()
+            await self.stage.play()
+            try:
+                commands = await self.live_commands()
+                script = await wf.agent(prompts.director_brief(self.plan, self.arch, self.items, wanted, commands),
+                                        role="lead", system=prompts.LEAD_SYSTEM, schema=schemas.CAPTURE_SCRIPT,
+                                        label="capture-director")
+                for shot in (script or {}).get("shots", [])[:60]:
+                    done.append(await self.run_shot(shot))
+                logs = await self.stage.logs()
+                events = await self.stage.events()
+                try:
+                    manifest = await self.stage.cmd("__sound_manifest")
+                except Exception as e:  # noqa: BLE001
+                    manifest = {"error": str(e)}
+            finally:
+                await self.stage.stop()
+        L = self.run_dir / "logs"
+        (L / "output.log").write_text("\n".join(
+            f"{e.get('t', 0):9.2f} [{e.get('side', '')}] {e.get('kind', '')}: {e.get('text', '')}" for e in logs),
+            encoding="utf-8")
+        (L / "playtest.log").write_text("\n".join(
+            f"{e.get('t', 0):9.2f} [{e.get('side', '')}] {e.get('name', '')} {json.dumps(e.get('data'), default=str)}"
+            for e in events if e.get("name") != "sound"), encoding="utf-8")
+        (L / "audio_events.log").write_text("\n".join(
+            f"{e.get('t', 0):9.2f} {json.dumps(e.get('data'), default=str)}" for e in events if e.get("name") == "sound"),
+            encoding="utf-8")
+        text = json.dumps(manifest.get("replies") or manifest, indent=1, ensure_ascii=False, default=str)
+        (self.run_dir / "captures" / "audio_design__sound_map.png").write_bytes(text_image("SOUND MAP", text))
+        self.save("evidence.json", {"shots": done, "commands": commands})
+        wf.log(f"evidence: {sum(1 for d in done if d.get('ok'))}/{len(done)} shots captured")
+        return {"shots": done}
+
     async def final_report(self, t0: float) -> dict:
         self.wf.phase("Report")
         final = {}
@@ -636,7 +763,7 @@ class Build:
         self.save("report.json", report)
         return report
 
-    async def run(self, idea: dict) -> dict:
+    async def run(self, idea: dict, evidence_plan: dict | None = None) -> dict:
         t0 = time.time()
         await self.plan_phase(idea)
         await self.style_phase()
@@ -645,13 +772,18 @@ class Build:
         await self.build_items()
         if self.cfg.integrate:
             await self.integrate_and_polish()
-        return await self.final_report(t0)
+        report = await self.final_report(t0)
+        if evidence_plan and self.stage is not None:
+            report["evidence"] = await self.evidence(evidence_plan)
+            self.save("report.json", report)
+        return report
 
 
 # ------------------------------------------------------------------------------------------------ entry point
 
 async def run_build(idea: dict, run_dir: Path, *, cfg: BuildConfig | None = None, studio: bool = True,
-                    resume: bool = True) -> dict:
+                    resume: bool = True, allow_place_ids: set[str] | None = None,
+                    evidence_plan: dict | None = None) -> dict:
     from harness.llm import llm_from_env
     from harness.workflow import Workflow
     from harness.tools.workspace import Workspace
@@ -668,7 +800,8 @@ async def run_build(idea: dict, run_dir: Path, *, cfg: BuildConfig | None = None
     if studio:
         from harness.stage import Stage, studio_exe
         from harness.tools.studio import StudioBridge
-        bridge = StudioBridge(allow_place_ids={"0"}, place_marker=("ServerStorage.CybusHarnessRun", run_id))
+        bridge = StudioBridge(allow_place_ids={"0"} | set(allow_place_ids or ()),
+                              place_marker=("ServerStorage.CybusHarnessRun", run_id))
         await bridge.connect()
         stage = Stage(bridge, ws, run_dir, run_id)
         await stage.start()
@@ -676,12 +809,36 @@ async def run_build(idea: dict, run_dir: Path, *, cfg: BuildConfig | None = None
         exe = studio_exe()
     assets = AssetStore(run_dir, ws, run_id, exe) if imagegen.enabled else None
     try:
-        return await Build(wf, ws, stage, roles["judge"], cfg or BuildConfig(), run_dir, imagegen, assets).run(idea)
+        build = Build(wf, ws, stage, roles["judge"], cfg or BuildConfig(), run_dir, imagegen, assets)
+        try:
+            from harness.tools.art import art_tools
+            from harness.tools.texpack import TexturePacks
+            build.extra_tools = art_tools(TexturePacks(ws), run_dir / "art")
+        except ImportError:
+            log.warning("texture painting unavailable (harness.tools.art missing)")
+        report = await build.run(idea, evidence_plan)
+        final = run_dir / "place" / "final.rbxl"
+        if final.exists():
+            report["place_file"] = str(final)
+        return report
     finally:
         if stage is not None:
             await stage.close()
         if bridge is not None:
             await bridge.close()
+
+
+async def build_game(idea: dict, run_dir, **opts) -> dict:
+    """Entry point for bench/run_bench.py: opts may carry budget_hours, deadline, evidence_plan and
+    allow_place_ids (model selection is by HARNESS_<ROLE>_* environment variables)."""
+    cfg = BuildConfig()
+    if opts.get("budget_hours"):
+        cfg.deadline = time.time() + float(opts["budget_hours"]) * 3600
+    elif isinstance(opts.get("deadline"), (int, float)):
+        cfg.deadline = float(opts["deadline"])
+    return await run_build(idea, Path(run_dir), cfg=cfg,
+                           allow_place_ids=set(map(str, opts.get("allow_place_ids") or [])),
+                           evidence_plan=opts.get("evidence_plan"))
 
 
 def main() -> int:

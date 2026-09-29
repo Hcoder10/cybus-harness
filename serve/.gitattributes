@@ -1,0 +1,2 @@
+# shell scripts must keep LF endings: they run on Linux GPU hosts and in WSL straight from this checkout
+*.sh text eol=lf

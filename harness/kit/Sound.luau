@@ -10,6 +10,13 @@ local TweenService = game:GetService("TweenService")
 local ContentProvider = game:GetService("ContentProvider")
 
 local Sound = {}
+local Debug
+do
+	local ok, result = pcall(function()
+		return require(script.Parent:WaitForChild("Debug", 5))
+	end)
+	Debug = ok and result or nil
+end
 local GROUP_VOLUME = { Music = 0.45, SFX = 0.8, UI = 0.6, Ambience = 0.5 }
 local registry = {}
 local rng = Random.new()
@@ -67,6 +74,10 @@ function Sound.play(name, opts)
 	end
 	local s = make(name, def, opts)
 	s:Play()
+	if Debug then
+		Debug.event("sound", { name = name, group = def.group, volume = s.Volume, id = s.SoundId,
+			spatial = opts ~= nil and opts.parent ~= nil })
+	end
 	if not def.looped then
 		s.Ended:Once(function()
 			s:Destroy()
@@ -109,6 +120,9 @@ function Sound.music(name, fade)
 	s:Play()
 	TweenService:Create(s, TweenInfo.new(fade), { Volume = target }):Play()
 	currentMusic = s
+	if Debug then
+		Debug.event("sound", { name = name, group = "Music", volume = target, id = s.SoundId, music = true })
+	end
 	return s
 end
 

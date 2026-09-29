@@ -136,3 +136,20 @@ ROUTE = {
         "item_id": _str, "issues": _strs}, "required": ["item_id", "issues"]}}},
     "required": ["assignments"],
 }
+
+# The capture director's script: how to show each piece of required evidence in one play session.
+CAPTURE_SCRIPT = {
+    "type": "object",
+    "properties": {"shots": {"type": "array", "items": {"type": "object", "properties": {
+        "file": {"type": "string", "description": "evidence path from the plan, e.g. captures/hud__play.png; for a "
+                                                   "strip the base path without the __NN suffix"},
+        "kind": {"type": "string", "enum": ["still", "strip"]},
+        "commands": {"type": "array", "items": {"type": "string"}},
+        "keys": {"type": "array", "items": {"type": "object", "properties": {
+            "key": {"type": "string"}, "hold_ms": {"type": "integer"}}, "required": ["key"]}},
+        "settle": {"type": "number"},
+        "seconds": {"type": "number"},
+        "frames": {"type": "integer"},
+    }, "required": ["file", "kind"]}}},
+    "required": ["shots"],
+}

@@ -31,8 +31,10 @@ techniques, not a style.
   Back easing.
 - 3D in UI: `ViewportFrame` with a WorldModel, a posed model, a Camera, lighting via Ambient / LightColor /
   LightDirection, for portraits, items and hero art.
-- Art: generate textures (panels, icons, backgrounds) with the image-generation tool in the style guide's
-  language, upload them, and reference the returned asset ids; icons as one set.
+- Art without uploads: paint textures with paint_texture (a layered-shape spec: panel and button skins with
+  soft shadows and rims, glows, icons built from shapes, particle / beam textures) and apply them with
+  `Textures.apply(guiOrEmitter, name)` (ImageContent / TextureContent from EditableImages). Paint tintable
+  textures in LA (white + alpha) and colour them with ImageColor3 / the emitter's Color. Icons as one set.
 
 ## Camera
 - A camera module bound with `RunService:BindToRenderStep(name, Enum.RenderPriority.Camera.Value + 1, fn)`,
@@ -76,7 +78,8 @@ techniques, not a style.
 - 3D sounds parented to parts / attachments with `RollOffMode` and min / max distances; UI and music 2D.
 - Variation: `PlaybackSpeed` randomised +-5-10%; a small pool per event.
 - Ducking: tween the music group's volume, or a `CompressorSoundEffect` with `SideChain` from the SFX group.
-- Verify every id loads (`Sound.IsLoaded`, `TimeLength > 0`); use only assets available to the game.
+- Find sounds with search_audio (public Creator Store audio, usable by id); verify every id loads
+  (`Sound.IsLoaded`, `TimeLength > 0`); 2-3 ids per event for variation.
 
 ## Robustness
 - `ReplicatedFirst` loading screen (`RemoveDefaultLoadingScreen`) with `ContentProvider:PreloadAsync`.

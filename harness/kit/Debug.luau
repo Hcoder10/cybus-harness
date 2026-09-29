@@ -14,7 +14,7 @@ local Debug = {}
 local commands = {}
 local events = {}
 local logs = {}
-local MAX_EVENTS, MAX_LOGS = 400, 300
+local MAX_EVENTS, MAX_LOGS = 600, 800
 local REMOTE = "KitDebugRelay"
 local pending = {}
 
@@ -98,10 +98,11 @@ function Debug.call(name, ...)
 end
 
 local function captureLogs(tag)
+	local KINDS = { [Enum.MessageType.MessageError] = "error", [Enum.MessageType.MessageWarning] = "warning",
+		[Enum.MessageType.MessageOutput] = "output", [Enum.MessageType.MessageInfo] = "info" }
 	LogService.MessageOut:Connect(function(message, kind)
-		if kind == Enum.MessageType.MessageError or kind == Enum.MessageType.MessageWarning then
-			local entry = { t = os.clock(), kind = kind == Enum.MessageType.MessageError and "error" or "warning",
-				text = string.sub(message, 1, 800), side = tag }
+		if KINDS[kind] then
+			local entry = { t = os.clock(), kind = KINDS[kind], text = string.sub(message, 1, 800), side = tag }
 			push(logs, entry, MAX_LOGS)
 			if RunService:IsClient() then
 				local remote = ReplicatedStorage:FindFirstChild(REMOTE)
@@ -134,6 +135,9 @@ local function builtinsServer()
 end
 
 local function builtinsClient()
+	Debug.register("__client_list", function()
+		return Debug.list()
+	end, "client commands")
 	local marker
 	Debug.register("__marker", function(on)
 		if on then

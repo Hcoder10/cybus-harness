@@ -33,8 +33,10 @@ PRE = """RULES FOR EVERY DEVELOPER ON THIS TEAM
   (ReplicatedStorage.Shared.Tokens). No magic numbers for style.
 - Use the kit modules in ReplicatedStorage.Kit (Maid, Spring, Motion, Shake, Sound, Debug) instead of rewriting
   them. Register a Debug command that shows your work so it can be captured.
-- Write complete, working code: no placeholders, TODOs, or "art goes here". If art is needed, build it from
-  UI objects / parts or request it with generate_image.
+- Write complete, working code: no placeholders, TODOs, or "art goes here". Custom art is yours to make:
+  paint textures with paint_texture (layered shapes, gradients, soft shadows, glows: panel and button skins,
+  icons, particle and beam textures) and apply them with Kit Textures; build 3D art from parts. Find sounds
+  with search_audio and register them with Kit Sound. Nothing is uploaded.
 - Finish by calling submit with your report."""
 
 BUILDER_SYSTEM = f"""You are a senior Roblox developer with a strong eye for visual craft, feel and polish.
@@ -139,3 +141,24 @@ def fix_brief(item: dict, style_md: str, fix_list: str, strengths: list[str], fi
             f"ISSUES TO FIX (most severe first)\n{fix_list}\n\nKEEP THESE STRENGTHS\n{keep}\n\n"
             f"STYLE GUIDE\n{style_md[:4000]}\n\nRUBRIC\n{playbook('rubric_' + item['aspect'])[:3000]}\n\n"
             f"CURRENT CODE (files you own)\n{ctx}\n\nFix the issues in the code now, then submit your report.")
+
+
+def director_brief(plan: dict, arch: dict, items: list[dict], evidence: list[dict], commands: dict) -> str:
+    shown = [{"id": i["id"], "aspect": i["aspect"], "capture": i["capture"]} for i in items]
+    return (f"GAME: {plan.get('title', '')}: {plan.get('fantasy', '')}\n"
+            f"Core loop: {' -> '.join(plan.get('core_loop', []))}\n"
+            f"Signature moment: {plan.get('signature_moment', '')}\n\n"
+            f"DEBUG COMMANDS REGISTERED IN THE RUNNING GAME (name: description)\n{compact_json(commands, 5000)}\n\n"
+            "BUILT-IN COMMANDS: __camera x y z lookX lookY lookZ fov (place the camera; no arguments resets it), "
+            "__players (player positions), __ui (screen guis).\n"
+            "KEYS you can press (sent to the game window; hold_ms holds): a-z, 0-9, space, enter, escape, tab, "
+            "left/right/up/down, shift, ctrl, alt.\n\n"
+            f"HOW EACH WORK ITEM IS SHOWN\n{compact_json(shown, 4000)}\n\n"
+            f"EVIDENCE TO CAPTURE (file, still/strip, what it must show, required)\n{compact_json(evidence, 7000)}\n\n"
+            "Write the capture script: one shot per evidence file you can honestly show (every required one, "
+            "optional ones when the game has them; for wildcard names like menu_* write one file per screen, e.g. "
+            "captures/ui_menus__menu_shop.png). Shots run in order in ONE play session: put commands that change "
+            "the game state (start a round, open a screen, trigger the signature moment, move the camera) before "
+            "the shot, and close screens / reset the camera afterwards so the next shot starts clean. For strips "
+            "give seconds and frames; keys held during a strip are pressed while it records. Show the game as it "
+            "is: never stage anything the game would not show a player.")

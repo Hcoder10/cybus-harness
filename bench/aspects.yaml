@@ -1,0 +1,243 @@
+# Per-aspect scoring rubric index for the new-genre benchmark (used by bench/score.py).
+#
+# Every aspect lists the EVIDENCE to capture and a genre-general 1-10 ANCHOR scale. The judge
+# (harness.judge.judge) scores each aspect from images only, with intent = the idea's pitch.
+#
+# Capture conventions (also documented in bench/evidence.py; bench/run_bench.py passes the whole plan to
+# build_game as opts["evidence_plan"]). All paths are relative to the idea's run_dir:
+#   captures/<tag>__<name>.png         a still (a pre-composited contact sheet also counts as a still)
+#   captures/<tag>__<name>__<NN>.png   frame NN (00, 01, ... in time order) of the strip <name>
+#   captures/<tag>__<name>/<frame>.png a strip stored as a folder of frames, sorted by file name
+#   logs/<file>                        text logs named by the log entries below
+# <tag> is an aspect id, several aspect ids joined with '+' (hud+world_art__overview.png), or 'all'.
+# <name> must match an evidence entry's name pattern (fnmatch); extra names are used as extra evidence.
+# A still's <name> must never end in __<digits> (that is how frames are recognised).
+# .jpg/.jpeg work too. Files whose tag is not an aspect id or 'all' are reported as unmatched.
+#
+# Scoring rules: an aspect with no image evidence scores 0 and is listed as missing. An aspect missing
+# some required entries is still judged on what exists but is flagged incomplete. Strips are composited
+# into one contact sheet per strip; logs are rendered as text images so the vision judge can read them.
+
+version: 1
+
+capture:
+  captures_dir: captures
+  logs_dir: logs
+  view: >-
+    Play mode as the player sees it (client view), 1920x1080 preferred and never below 1280x720, the same
+    graphics quality for every capture, with Studio overlays, selection boxes, the dev console, command
+    bar output and any debug UI hidden.
+  strips: >-
+    Evenly spaced frames across the moment, 8 by default (the entry's `frames` overrides it): about 2 s
+    for a feel moment, 6-10 s for a camera move or a sequence, one full iteration for the core loop.
+  honesty: >-
+    Capture the game as it is. No staged props, no hand-edited images, no frames from outside Play mode;
+    required entries must show the thing named, not the closest flattering substitute.
+  max_images: 6
+
+scale:
+  0: No evidence was captured for this aspect. Assigned by the scorer, never by the judge.
+  1: Broken or placeholder. Missing, default or non-functional; reads as unfinished or blocks play.
+  2: Present but crude. Works in the most basic way; defaults everywhere; visible problems.
+  3: Rough. Some intent shows, but it is inconsistent and below a typical hobby game.
+  4: Typical hobby Roblox game. Functional and recognisable; stock or generic assets; little deliberate design.
+  5: Above hobby level. Clear intent and some custom work, uneven quality.
+  6: Solid. Mostly custom and consistent, a few rough edges; not yet front-page quality.
+  7: Strong front-page Roblox game. Custom, consistent, readable and tuned; players would call it professional.
+  8: Between front-page and the bar. Few flaws, memorable moments, craft visible almost everywhere.
+  9: >-
+    The owner's reference bar. A cohesive, AAA-feeling Roblox game: fully custom UI, cinematic camera,
+    layered VFX, tuned feel; nothing looks default.
+  10: Beyond the bar. Best in class on the platform; could be shown as an example of the craft.
+
+aspects:
+  - id: ui_menus
+    title: UI and menus
+    judges: >-
+      The title screen, menus, panels and dialogs outside moment-to-moment play: layout, visual hierarchy,
+      typography, iconography, custom art versus stock Roblox UI, consistency between screens, transitions.
+    evidence:
+      - {name: title, kind: still, required: true, what: "The title or start screen as a new player first sees it."}
+      - {name: "menu_*", kind: still, required: true, what: "Each other full screen or panel (shop, inventory, journal, settings, results, select screens), one file per menu, e.g. ui_menus__menu_shop.png."}
+      - {name: transition, kind: strip, required: false, frames: 8, what: "Opening then closing one menu, about 1 s."}
+    anchors:
+      1: No title screen or menus, or stock Roblox UI (default buttons, default font on grey frames) that overlaps, clips or does not respond.
+      4: Menus exist and work but are flat rectangles with default fonts and stock icons; spacing is inconsistent; no transitions.
+      7: Custom-styled menus with clear hierarchy, a consistent type scale and palette, matching icons, hover and press states, simple transitions; scales to other screen sizes.
+      9: A designed UI kit. Bespoke frames, textures and icons, expressive typography, layered depth, animated transitions and micro-interactions, a title screen that sets the mood; every screen feels part of one product.
+
+  - id: hud
+    title: HUD
+    judges: >-
+      The in-play heads-up display: readability over the world, information priority, feedback when values
+      change, contextual elements, safe areas and small screens.
+    evidence:
+      - {name: play, kind: still, required: true, what: "Normal play with the HUD at rest."}
+      - {name: busy, kind: still, required: true, what: "The most information-dense moment: objectives, notifications and changing values at once."}
+      - {name: feedback, kind: strip, required: false, frames: 8, what: "A HUD value changing (gain, loss, objective complete), about 1.5 s."}
+      - {name: mobile, kind: still, required: false, what: "The play view at phone landscape size (Studio device emulator, about 844x390)."}
+    anchors:
+      1: HUD missing, unreadable over the world, or showing debug or placeholder values.
+      4: Basic labels and bars in default styling; the key information is there but cluttered or slow to read; nothing reacts when values change.
+      7: Clean, readable HUD with clear priority and consistent style, safe-area aware; values animate when they change; nothing important missing.
+      9: The HUD is part of the art direction. Custom widgets, elegant motion on change, elements that appear only when needed, instantly readable in the busiest moment and on small screens.
+
+  - id: camera
+    title: Camera
+    judges: >-
+      Framing, follow behaviour and smoothing, collision handling, use of field of view and offsets,
+      authored and cinematic shots, and whether the camera serves the genre.
+    evidence:
+      - {name: explore, kind: strip, required: true, frames: 10, what: "Normal movement including a turn, about 6 s."}
+      - {name: signature, kind: strip, required: true, frames: 10, what: "The camera during the idea's signature moment."}
+      - {name: tight, kind: still, required: false, what: "The camera in a confined space or against a wall."}
+      - {name: intro, kind: strip, required: false, frames: 8, what: "An intro or cutscene shot, if the game has one."}
+    anchors:
+      1: A stock camera that works against the game. Clips through walls, frames awkwardly, jitters or cuts disorientingly.
+      4: The default Roblox follow camera or a basic fixed camera. Functional; no genre-specific framing, smoothing or cinematic moments.
+      7: A camera designed for the genre. Purposeful framing, smooth follow with good collision handling, field-of-view or offset changes that support speed or focus, and at least one authored shot.
+      9: Cinematic camera direction. Framing, easing, shake and field of view tuned per moment, authored shots for intros and signature moments, never loses the player or the action.
+
+  - id: game_feel
+    title: Game feel
+    judges: >-
+      Input to response: responsiveness, weight, anticipation, feedback on every action (motion, effects,
+      sound, camera) and whether difficulty and tuning feel deliberate.
+    evidence:
+      - {name: core_action, kind: strip, required: true, frames: 10, what: "The core verb from input to result, 1-2 s, frames densest around the input."}
+      - {name: reward, kind: strip, required: true, frames: 8, what: "A success or reward moment with its feedback."}
+      - {name: setback, kind: strip, required: false, frames: 8, what: "A failure or setback (fall, crash, loss) with its feedback."}
+    anchors:
+      1: Inputs lag, fail or get no response; controls feel broken.
+      4: Controls work but feel floaty or stiff; actions give little feedback beyond the state change.
+      7: Responsive, weighty controls with clear feedback on every action; anticipation, response, sound and visuals in sync; tuning feels deliberate.
+      9: Tuned to a professional standard. Layered feedback (camera shake, brief time-scale changes, squash and stretch, particles, sound) timed to the frame, forgiving input handling, a core verb that is satisfying to repeat for hours.
+
+  - id: vfx
+    title: Visual effects
+    judges: >-
+      Particles, trails, beams, lighting effects, post-processing and screen effects: custom textures,
+      layering, timing, palette consistency and readability at gameplay distance.
+    evidence:
+      - {name: signature, kind: strip, required: true, frames: 8, what: "The effects at the idea's signature moment."}
+      - {name: ambient, kind: still, required: true, what: "Ambient or environmental effects in normal play (weather, dust, light shafts, water)."}
+      - {name: feedback, kind: strip, required: false, frames: 8, what: "Small feedback effects: pickups, interactions, UI sparkles."}
+    anchors:
+      1: No effects, or default Roblox sparkles, fire and smoke used as-is; effects glitch or block the view.
+      4: A few generic particle effects with default textures; single-layer, loosely timed, colors that do not match.
+      7: Custom effects with their own textures, layered (core, glow, sparks, residue), timed to the action, matched to the game's palette, readable at gameplay distance.
+      9: Signature-quality effects. Multi-layer with anticipation, peak and dissipation; lighting and post-processing used deliberately; screen-space accents; effects that sell the key moments without clutter.
+
+  - id: animation
+    title: Animation
+    judges: >-
+      Motion of the player representation, NPCs, creatures, vehicles, props and UI: custom versus default
+      animations, anticipation, follow-through, blending between states, sync with gameplay and sound.
+    evidence:
+      - {name: locomotion, kind: strip, required: true, frames: 10, what: "The player character, avatar or vehicle going from idle to moving to stopping."}
+      - {name: action, kind: strip, required: true, frames: 8, what: "The core action's animation."}
+      - {name: world, kind: strip, required: false, frames: 8, what: "Animated NPCs, creatures or world objects."}
+    anchors:
+      1: No animation or broken rigs. T-poses, sliding, popping, or default animations on rigs they do not fit.
+      4: Default Roblox avatar animations and simple tweened objects; no anticipation or follow-through.
+      7: Custom animations for the main character or object and the key actions, with anticipation and follow-through; smooth blending between states; UI and world objects move with easing.
+      9: Expressive, stylized animation throughout. Personality in movement, layered secondary motion, synced to gameplay events and sound, no visible pops or foot sliding.
+
+  - id: world_art
+    title: World art and lighting
+    judges: >-
+      The environment: composition from gameplay camera angles, palette, lighting and atmosphere, material
+      and texture quality, detail density, landmarks, skybox, silhouette readability, variety between areas.
+    evidence:
+      - {name: overview, kind: still, required: true, what: "A wide establishing shot of the main play space."}
+      - {name: play_view, kind: still, required: true, what: "A typical gameplay view, framed exactly as the player sees it."}
+      - {name: detail, kind: still, required: false, what: "A close look at one area's materials and props."}
+      - {name: "area_*", kind: still, required: false, what: "Each other distinct area, level or time of day, one file each."}
+    anchors:
+      1: A baseplate or default terrain with scattered free-model assets and no lighting setup.
+      4: A built space using default materials and stock assets; flat lighting; little composition and few landmarks.
+      7: A coherent environment with a clear palette, custom props and materials, composed lighting (atmosphere, color correction), readable landmarks and good detail density.
+      9: An art-directed world. Strong silhouettes and composition from gameplay angles, custom meshes and textures, mood lighting that changes with the game's moments, every area distinctive and finished.
+
+  - id: characters
+    title: Characters and hero objects
+    judges: >-
+      The player's avatar or vehicle, NPCs, creatures and the hero objects the game is about (the buggy,
+      the ball, the fish, the tower): design, silhouette, material quality, readable states, fit with the
+      art direction, customization.
+    evidence:
+      - {name: player, kind: still, required: true, what: "The player's character, avatar or vehicle in close three-quarter view, in game lighting."}
+      - {name: "npc_*", kind: still, required: false, what: "Each NPC, creature or rival, one file each."}
+      - {name: "hero_*", kind: still, required: false, what: "Each key hero object or collectible, one file each."}
+      - {name: lineup, kind: still, required: false, what: "All characters, variants or customization options side by side."}
+    anchors:
+      1: Default blocky avatars, or missing and unfinished models for the player, NPCs or key objects.
+      4: Stock avatars or free-model NPCs and objects with no styling to fit the game.
+      7: A custom-designed player representation, NPCs and hero objects in one consistent style, with clear silhouettes and readable states.
+      9: Memorable, distinctive designs with personality, high-quality meshes and textures, variants or customization, and presentation that shows them off.
+
+  - id: audio_design
+    title: Audio design
+    judges: >-
+      Music, ambience, sound effects and mix. The judge cannot hear, so this is scored from the sound map
+      and the audio event log: coverage of contexts and actions, variation, mixing structure (SoundGroups,
+      ducking), and whether sounds fire in sync with the events they belong to.
+    evidence:
+      - {name: sound_map, kind: still, required: true, what: "The game's sound setup: SoundService and SoundGroups with every named Sound (music, ambience, effects, UI) and key properties visible; several stills are fine."}
+      - {name: audio_events, kind: log, path: logs/audio_events.log, required: true, what: "Every sound played during the scripted playtest, one per line: time, sound name, SoundGroup, volume, and the game event that triggered it."}
+      - {name: settings, kind: still, required: false, what: "The audio settings screen, if any."}
+    anchors:
+      1: No audio, or only Roblox default sounds; nothing plays on key events.
+      4: One music loop and a few generic effects; many actions are silent; no mixing structure.
+      7: Music per context, ambience, and distinct sounds on every important action and UI interaction; variation to avoid repetition; SoundGroups with sensible levels.
+      9: A designed soundscape. Adaptive music that follows game state, layered and spatialized effects, ducking so key moments cut through, audio synced to the visual beats.
+
+  - id: core_loop
+    title: Core loop
+    judges: >-
+      Whether the loop the pitch promises is complete and playable end to end: start, act, progress, pay
+      off, repeat; goals, pacing, progression, failure and retry, a reason to play another round.
+    evidence:
+      - {name: loop, kind: strip, required: true, frames: 12, what: "One full loop iteration from the scripted playtest: start, core action, reward, progress, next goal."}
+      - {name: progress, kind: still, required: true, what: "Proof of progression: an upgrade bought, a stage unlocked, a journal filling, a results screen."}
+      - {name: end, kind: still, required: false, what: "The end, win or results screen of a complete session."}
+      - {name: playtest, kind: log, path: logs/playtest.log, required: true, what: "The scripted playthrough transcript: timestamped inputs, game events, state changes and errors, from launch to the end of one full loop."}
+    anchors:
+      1: The loop cannot be completed. Soft-locks, missing steps or errors stop play.
+      4: The loop works end to end but is thin. Few goals, little progression or variety, unclear what to do next.
+      7: A complete, well-paced loop. Clear goals, meaningful progression and rewards, failure and retry handled, a reason to play another round.
+      9: A compelling loop with depth. Layered short- and long-term goals, tight pacing, onboarding that teaches by doing, and a signature moment that pays the loop off.
+
+  - id: cohesion
+    title: Cohesion
+    judges: >-
+      Whether everything reads as one game with one art direction, and whether it delivers what the pitch
+      promises: palette, shape language, typography, motion and tone shared by UI, world, characters and
+      effects.
+    evidence:
+      - {name: "view_*", kind: still, required: false, what: "Any further views that show the game as a whole, one file each."}
+    borrow: [ui_menus, hud, world_art, characters, vfx]
+    min_images: 3
+    anchors:
+      1: Parts look like they come from different games; assets clash; the result does not match the pitch.
+      4: Some shared elements, but a mix of styles (free models, default UI, mismatched palettes).
+      7: One recognizable art direction across UI, world, characters and effects; the tone matches the pitch.
+      9: Everything feels authored by one team with one vision. Palette, shape language, typography, motion and sound reinforce the same identity, and the pitch's promise is delivered.
+
+  - id: polish
+    title: Polish
+    judges: >-
+      The last ten percent: no placeholders, default assets, debug text, overlapping or flickering
+      surfaces, clipping, broken UI scaling or runtime errors; loading and transitions handled; edges of
+      the map and edge cases considered.
+    evidence:
+      - {name: loading, kind: still, required: false, what: "The loading or intro screen."}
+      - {name: "edge_*", kind: still, required: false, what: "Out-of-the-way corners, map edges, what is behind the obvious camera angles, one file each."}
+      - {name: output, kind: log, path: logs/output.log, required: true, what: "The Studio output (server and client) during the scripted playtest, unfiltered."}
+    borrow: [ui_menus, hud, world_art, camera]
+    min_images: 3
+    anchors:
+      1: Visible bugs and placeholders. Error spam, debug text, missing textures, flickering overlapping surfaces, UI that breaks at other resolutions.
+      4: Works but rough. Occasional glitches, unhandled edge cases, abrupt transitions, some default assets left in.
+      7: Few visible flaws. Consistent details, loading and transitions handled, UI scales, no errors in normal play.
+      9: Nothing left rough. Every transition, map edge and edge case considered; details reward close inspection; the game feels finished and shippable.
