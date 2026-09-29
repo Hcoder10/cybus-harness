@@ -163,3 +163,44 @@ def lighting_script(style: dict) -> str:
         lines.append("end")
     lines.append("return \"lighting applied\"")
     return "\n".join(lines)
+
+
+def _luminance(hex_color: str) -> float:
+    h = hex_color.lstrip("#")
+    rgb = [int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+    lin = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in rgb]
+    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+
+
+def contrast_ratio(a: str, b: str) -> float:
+    """WCAG contrast ratio between two #RRGGBB colours (1..21)."""
+    la, lb = _luminance(a), _luminance(b)
+    hi, lo = max(la, lb), min(la, lb)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+# (foreground role, background role, minimum ratio, why)
+CONTRAST_RULES = (
+    ("text", "bg", 4.5, "body text on the background"),
+    ("text", "surface", 4.5, "body text on panels"),
+    ("text", "surface_raised", 4.5, "body text on raised panels and buttons"),
+    ("text_muted", "surface", 3.0, "secondary text on panels"),
+    ("primary", "bg", 3.0, "the primary accent against the background"),
+    ("primary", "surface", 3.0, "the primary accent on panels"),
+    ("danger", "surface", 3.0, "danger colour on panels"),
+    ("success", "surface", 3.0, "success colour on panels"),
+)
+
+
+def contrast_issues(style: dict) -> list[str]:
+    """Readability problems in a style guide's palette, measured (WCAG ratios), not guessed."""
+    pal = style.get("palette") or {}
+    out = []
+    for fg, bg, need, why in CONTRAST_RULES:
+        a, b = pal.get(fg), pal.get(bg)
+        if not (isinstance(a, str) and _HEX.match(a.strip()) and isinstance(b, str) and _HEX.match(b.strip())):
+            continue
+        r = contrast_ratio("#" + _HEX.match(a.strip()).group(1), "#" + _HEX.match(b.strip()).group(1))
+        if r < need:
+            out.append(f"{fg} {a} on {bg} {b} is {r:.2f}:1, below {need}:1 ({why})")
+    return out

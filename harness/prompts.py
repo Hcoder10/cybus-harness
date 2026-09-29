@@ -84,14 +84,44 @@ def plan_revise_brief(plan: dict, crit: dict) -> str:
             f"REVIEW\n{compact_json(crit, 3000)}\n\nSubmit the full revised plan.")
 
 
-def style_brief(plan: dict) -> str:
+STYLE_ANGLES = (
+    "the boldest, most distinctive direction that still serves the fantasy: a look nobody would mistake for "
+    "another game",
+    "the most readable and cohesive direction: calm, confident, every element clearly part of one system",
+    "the most cinematic and atmospheric direction: light, mood, depth and a strong time of day first",
+)
+
+
+def style_brief(plan: dict, angle: str | None = None) -> str:
     return (f"GAME PLAN\n{compact_json(plan, 4000)}\n\nSTYLE GUIDE TEMPLATE\n{playbook('style_guide')}\n\n"
-            "Write this game's style guide with submit. Fonts: Roblox font names (Enum.Font names such as "
+            + (f"DIRECTION TO EXPLORE: {angle}\n\n" if angle else "")
+            + "Write this game's style guide with submit. Fonts: Roblox font names (Enum.Font names such as "
             "GothamBlack, FredokaOne, Michroma, Bangers, Oswald, Roboto, TitilliumWeb, LuckiestGuy, Sarpanch, "
             "BuilderSans; optionally ':Weight', e.g. 'Montserrat:Bold'). Palette: #RRGGBB with the required roles "
             "plus any game-specific tokens. reference_shots: 3-4 image-generation prompts for concept frames of the "
             "key screens and moments (title screen, gameplay with HUD, the signature moment), each a complete, "
             "specific description in the style guide's language, framed as a Roblox game screenshot.")
+
+
+def style_pick_brief(plan: dict, candidates: list[str], issues: list[list[str]]) -> str:
+    blocks = []
+    for i, (md, iss) in enumerate(zip(candidates, issues)):
+        measured = "\n".join(f"  - {x}" for x in iss) or "  - none"
+        blocks.append(f"=== CANDIDATE {i} ===\n{md[:3500]}\nMEASURED READABILITY PROBLEMS:\n{measured}")
+    return (f"GAME: {plan.get('title', '')}: {plan.get('fantasy', '')}\nSignature moment: "
+            f"{plan.get('signature_moment', '')}\n\n" + "\n\n".join(blocks) + "\n\n"
+            "Pick the style guide that will make the best game at the bar: specific to this fantasy (not a generic "
+            "default), internally cohesive (palette, type, shapes, motion, light and sound tell one story), "
+            "readable, and buildable in Roblox. Readability problems can be fixed; a generic or incoherent direction "
+            "cannot. Give the index, why, and up to 3 specific ideas from the other candidates worth grafting in.")
+
+
+def style_revise_brief(style: dict, issues: list[str], grafts: list[str]) -> str:
+    fixes = "\n".join(f"- {x}" for x in issues) or "- none"
+    graft = "\n".join(f"- {x}" for x in grafts) or "- none"
+    return (f"STYLE GUIDE\n{compact_json(style, 9000)}\n\nMEASURED READABILITY PROBLEMS (fix every one by adjusting "
+            f"the colours, keeping the direction's character)\n{fixes}\n\nIDEAS TO GRAFT IN (only where they fit the "
+            f"direction)\n{graft}\n\nSubmit the full revised style guide.")
 
 
 def arch_brief(plan: dict, style_md: str, kit_api: str) -> str:

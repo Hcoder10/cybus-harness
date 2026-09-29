@@ -382,12 +382,36 @@ class Build:
         self.save("plan.json", plan)
 
     async def style_phase(self) -> None:
+        """Three art directions explored in parallel, a critic picks one (with grafts from the others), then
+        measured readability problems and grafts are folded in by one revision."""
+        from harness.tokens import contrast_issues
         wf = self.wf
         wf.phase("Style")
-        style = await wf.agent(prompts.style_brief(self.plan), role="art", system=prompts.ART_SYSTEM,
-                               schema=schemas.STYLE, label="style")
-        if not isinstance(style, dict):
+        cands = await wf.parallel([
+            lambda i=i, a=a: wf.agent(prompts.style_brief(self.plan, a), role="art", system=prompts.ART_SYSTEM,
+                                      schema=schemas.STYLE, label=f"style:{i}")
+            for i, a in enumerate(prompts.STYLE_ANGLES)])
+        cands = [c for c in cands if isinstance(c, dict)]
+        if not cands:
             raise RuntimeError("the art director produced no style guide")
+        style, grafts, why = cands[0], [], ""
+        if len(cands) > 1:
+            pick = await wf.agent(prompts.style_pick_brief(self.plan, [style_markdown(c) for c in cands],
+                                                           [contrast_issues(c) for c in cands]),
+                                  role="critic", system=prompts.CRITIC_SYSTEM, schema=schemas.STYLE_PICK,
+                                  label="style-pick")
+            if isinstance(pick, dict):
+                idx = int(pick.get("choice", 0))
+                style = cands[idx] if 0 <= idx < len(cands) else cands[0]
+                grafts, why = list(pick.get("graft") or [])[:3], str(pick.get("why", ""))
+        issues = contrast_issues(style)
+        if issues or grafts:
+            revised = await wf.agent(prompts.style_revise_brief(style, issues, grafts), role="art",
+                                     system=prompts.ART_SYSTEM, schema=schemas.STYLE, label="style-revise")
+            if isinstance(revised, dict) and len(contrast_issues(revised)) <= len(issues):
+                style = revised
+        self.save("style_candidates.json", {"candidates": cands, "picked_why": why, "grafts": grafts,
+                                            "contrast_before": issues, "contrast_after": contrast_issues(style)})
         self.style = style
         self.style_md = style_markdown(style)
         src, problems = build_tokens(style)

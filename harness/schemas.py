@@ -153,3 +153,10 @@ CAPTURE_SCRIPT = {
     }, "required": ["file", "kind"]}}},
     "required": ["shots"],
 }
+
+STYLE_PICK = {
+    "type": "object",
+    "properties": {"choice": {"type": "integer", "minimum": 0}, "why": {"type": "string"},
+                   "graft": {"type": "array", "items": {"type": "string"}, "maxItems": 3}},
+    "required": ["choice", "why"],
+}

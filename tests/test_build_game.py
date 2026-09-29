@@ -233,6 +233,8 @@ class FakeLLM:
             out = {"verdict": "pass", "issues": []}
         elif "assignments" in props:
             out = {"assignments": []}
+        elif "choice" in props:
+            out = {"choice": 1, "why": "calmer and more cohesive", "graft": ["warm rim light on panels"]}
         else:
             out = {"summary": "built", "files": [], "how_to_see_it": "run show_hud"}
         return LLMResponse(Message("assistant", "", tool_calls=[ToolCall("s", "submit", out)]), {}, "tool_calls", {})
