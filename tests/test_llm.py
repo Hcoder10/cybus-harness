@@ -314,7 +314,7 @@ def test_llm_from_env(monkeypatch):
 
     builder = llm_from_env("builder")  # nothing role-specific: all defaults
     assert (builder.base_url, builder.model, builder.api_key, builder.provider, builder.max_tokens) == (
-        "http://gpu.test:8000/v1", "cybus", "default-key-123", "openai", 4096)
+        "http://gpu.test:8000/v1", "cybus", "default-key-123", "openai", 16384)
     judge = llm_from_env("judge")
     assert (judge.base_url, judge.model, judge.api_key, judge.max_tokens) == (
         "http://gpu.test:8000/v1", "cybus-judge", "default-key-123", 1234)

@@ -616,6 +616,17 @@ def llm_from_env(role: str) -> LLM:
     if missing:
         names = " and ".join(f"HARNESS_{tag}_{k}" for k in missing)
         raise ValueError(f"role {role!r} has no model endpoint: set {names} (or the HARNESS_DEFAULT_* fallbacks)")
+    # Reasoning models spend their completion budget on thinking before the answer; 4096 truncated structured
+    # submissions mid-object on Qwen3.8 (the last fields went missing six times in a row), so default higher.
     max_tokens = own("MAX_TOKENS") or default("MAX_TOKENS")
+    temperature = own("TEMPERATURE") or default("TEMPERATURE")
+    extra_raw = own("EXTRA") or default("EXTRA")        # JSON merged into every request body, e.g. template kwargs
+    extra = None
+    if extra_raw:
+        try:
+            extra = json.loads(extra_raw)
+        except ValueError as e:
+            raise ValueError(f"HARNESS_{tag}_EXTRA / HARNESS_DEFAULT_EXTRA is not valid JSON: {e}") from e
     return LLM(base_url or "", model, api_key=api_key, provider=provider,
-               max_tokens=int(max_tokens) if max_tokens else 4096)
+               max_tokens=int(max_tokens) if max_tokens else 16384,
+               temperature=float(temperature) if temperature else 0.6, extra=extra)
