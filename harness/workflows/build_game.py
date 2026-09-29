@@ -248,7 +248,8 @@ class Build:
 
     # ------------------------------------------------------------------ tools for builders
     TOOL_ASPECTS = {"paint_texture": "texture_spec", "list_textures": "texture_spec",
-                    "author_clip": "animation_spec", "list_clips": "animation_spec"}
+                    "author_clip": "animation_spec", "list_clips": "animation_spec",
+                    "check_fx_spec": "vfx_camera_spec"}
 
     @classmethod
     def tool_fits(cls, tool_name: str, aspect: str) -> bool:
@@ -833,6 +834,11 @@ async def run_build(idea: dict, run_dir: Path, *, cfg: BuildConfig | None = None
             build.extra_tools = build.extra_tools + anim_tools(ClipPack(ws), run_dir / "art")
         except ImportError:
             log.warning("clip authoring unavailable (harness.tools.anim missing)")
+        try:
+            from harness.tools import fxspec
+            build.extra_tools = build.extra_tools + fxspec.tools()
+        except ImportError:
+            log.warning("effect-spec checking unavailable (harness.tools.fxspec missing)")
         report = await build.run(idea, evidence_plan)
         final = run_dir / "place" / "final.rbxlx"
         if final.exists():
