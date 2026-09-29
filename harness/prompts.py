@@ -136,7 +136,9 @@ def fix_brief(item: dict, style_md: str, fix_list: str, strengths: list[str], fi
               score: float) -> str:
     ctx = "\n\n".join(f"--- {path} ---\n{src}" for path, src in files.items())
     keep = "\n".join(f"- {s}" for s in strengths[:8]) or "- (none noted)"
+    owned = "\n".join(f"- {f}" for f in item.get("files", []))
     return (f"ITEM: {item['id']} - {item['title']} (aspect: {item['aspect']})\n{item['brief']}\n\n"
+            f"FILES YOU OWN\n{owned}\n\n"
             f"REVIEW SCORE: {score:.1f}/10 on the studio scale. The captures the reviewers saw are attached.\n\n"
             f"ISSUES TO FIX (most severe first)\n{fix_list}\n\nKEEP THESE STRENGTHS\n{keep}\n\n"
             f"STYLE GUIDE\n{style_md[:4000]}\n\nRUBRIC\n{playbook('rubric_' + item['aspect'])[:3000]}\n\n"

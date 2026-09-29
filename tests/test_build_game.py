@@ -195,6 +195,155 @@ class FakeLLM:
         return LLMResponse(Message("assistant", "", tool_calls=[ToolCall("s", "submit", out)]), {}, "tool_calls", {})
 
 
+def _png(color=(60, 90, 140), size=(320, 180)) -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", size, color).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+class FakeBridge:
+    def __init__(self):
+        self.calls = []
+
+    async def call(self, name, args=None):
+        self.calls.append((name, args))
+        return {}
+
+
+class FakeStage:
+    """Stands in for Studio: every capture is a flat image, the game logs one error from the HUD script."""
+
+    def __init__(self):
+        from contextlib import asynccontextmanager
+        self.lock = asyncio.Lock()
+        self.bridge = FakeBridge()
+        self.commands, self.keys, self.plays = [], [], 0
+        self._acm = asynccontextmanager
+
+    async def edit(self, code, timeout_ms=20000):
+        return {"value": "ok"}
+
+    async def sync(self):
+        return {"pushed": [], "held_back": {}}
+
+    async def play(self, timeout=90):
+        self.plays += 1
+
+    async def stop(self):
+        pass
+
+    async def cmd(self, line, *args, timeout=30):
+        self.commands.append(line)
+        if line == "__list":
+            return {"side": "server", "ok": True, "result": json.dumps({"start_round": "starts a round"})}
+        if line == "__client_list":
+            return {"side": "client", "ok": True, "replies": [{"ok": True, "result": json.dumps({"show_hud": "shows"})}]}
+        if line == "__sound_manifest":
+            return {"side": "client", "ok": True, "replies": [{"ok": True, "result": "{}"}]}
+        return {"side": "client", "ok": True, "replies": []}
+
+    async def logs(self):
+        return [{"kind": "error", "side": "client",
+                 "text": "StarterPlayer.StarterPlayerScripts.Hud:3: attempt to index nil with 'Text'"},
+                {"kind": "output", "side": "server", "text": "round started"}]
+
+    async def events(self):
+        return [{"t": 1.0, "name": "round_started", "side": "server", "data": {"round": 1}},
+                {"t": 1.5, "name": "sound", "side": "client", "data": {"name": "ui_click"}}]
+
+    async def shot(self, label):
+        return _png()
+
+    async def strip(self, seconds, n, label):
+        return [_png((20 * i, 40, 90)) for i in range(n)]
+
+    async def key(self, key, hold_ms=0):
+        self.keys.append(key)
+
+    def session(self):
+        stage = self
+
+        @self._acm
+        async def ctx():
+            async with stage.lock:
+                await stage.play()
+                yield {"pushed": []}
+        return ctx()
+
+    async def capture(self, label, kind, commands, **kw):
+        from harness.stage import Capture
+        cap = Capture(label=label, logs=await self.logs())
+        for c in commands:
+            cap.command_results.append({"command": c, **(await self.cmd(c))})
+        cap.images = await self.strip(2, 8, label) if kind in ("moment", "loop") else [await self.shot(label)]
+        return cap
+
+
+class JudgingFakeLLM(FakeLLM):
+    """FakeLLM that also judges (plain JSON replies when no tools are offered) and scripts captures."""
+
+    def __init__(self):
+        super().__init__()
+        self.judged = 0
+
+    async def chat(self, messages, tools=None):
+        if not tools:                                   # a judge call
+            self.judged += 1
+            return LLMResponse(Message("assistant", json.dumps({
+                "score": 6, "strengths": ["clear palette"],
+                "issues": [{"severity": "major", "where": "hud timer", "problem": "too small", "fix": "raise to 32 dp"}]})),
+                {}, "stop", {})
+        submit = next((t["function"]["parameters"] for t in tools if t["function"]["name"] == "submit"), None)
+        props = set((submit or {}).get("properties", {}))
+        if "shots" in props:
+            out = {"shots": [{"file": "captures/hud__play.png", "kind": "still", "commands": ["show_hud"]},
+                             {"file": "captures/camera__explore", "kind": "strip", "seconds": 1, "frames": 3,
+                              "keys": [{"key": "w", "hold_ms": 100}]},
+                             {"file": "../../etc/passwd", "kind": "still"}]}
+            return LLMResponse(Message("assistant", "", tool_calls=[ToolCall("s", "submit", out)]), {}, "tool_calls", {})
+        if "assignments" in props:
+            out = {"assignments": [{"item_id": "hud", "issues": ["timer too small"]}, {"item_id": "ghost", "issues": ["x"]}]}
+            return LLMResponse(Message("assistant", "", tool_calls=[ToolCall("s", "submit", out)]), {}, "tool_calls", {})
+        return await super().chat(messages, tools)
+
+
+def test_build_game_with_fake_stage(tmp_path: Path):
+    """Every Studio-facing path (item capture/judge/fix, integrate + panel + routing, final report, evidence)
+    runs against a fake Studio."""
+    from harness.tools.workspace import Workspace
+    from harness.workflow import Workflow
+    fake = JudgingFakeLLM()
+    roles = {r: fake for r in ("lead", "art", "builder", "critic", "judge")}
+    wf = Workflow("fake-stage", tmp_path, roles, resume=False)
+    ws = Workspace(tmp_path / "workspace")
+    stage = FakeStage()
+    cfg = BuildConfig(repair_rounds=1, polish_rounds=1)
+    plan = {"items": [{"file": "captures/hud__play.png", "kind": "still", "what": "hud", "required": True},
+                      {"file": "captures/camera__explore__NN.png", "kind": "strip", "what": "moving", "required": True}]}
+    report = asyncio.run(Build(wf, ws, stage, fake, cfg, tmp_path).run({"id": "harbour", "pitch": "x"}, plan))
+    assert set(report["items"]) == {"core", "hud"}
+    assert all(1 <= r["score"] <= 10 for r in report["items"].values())
+    verdicts = json.loads((tmp_path / "verdicts" / "hud.json").read_text(encoding="utf-8"))
+    assert [v["round"] for v in verdicts] == [0, 1, 99]           # built, fixed once, final
+    assert any("attempt to index nil" in e for e in verdicts[0]["errors"])   # error routed to the HUD's owner
+    assert json.loads((tmp_path / "verdicts" / "core.json").read_text(encoding="utf-8"))[0]["errors"] == []
+    panel = json.loads((tmp_path / "panel_r0.json").read_text(encoding="utf-8"))
+    assert "hud" in panel["errors"] and panel["scores"]["cohesion"] == 6
+    assert (tmp_path / "captures" / "hud__play.png").exists()
+    assert sorted(p.name for p in (tmp_path / "captures").glob("camera__explore__*.png")) == \
+        ["camera__explore__00.png", "camera__explore__01.png", "camera__explore__02.png"]
+    assert not (tmp_path.parent / "etc").exists()
+    ev = json.loads((tmp_path / "evidence.json").read_text(encoding="utf-8"))
+    assert [s["ok"] for s in ev["shots"]] == [True, True, False]
+    assert (tmp_path / "logs" / "audio_events.log").read_text(encoding="utf-8").count("ui_click") == 1
+    assert "round_started" in (tmp_path / "logs" / "playtest.log").read_text(encoding="utf-8")
+    assert (tmp_path / "captures" / "audio_design__sound_map.png").exists()
+    assert "w" in stage.keys and ("place_save_as" in [c[0] for c in stage.bridge.calls])
+    labels = [json.loads(l).get("label") for l in (tmp_path / "journal.jsonl").read_text(encoding="utf-8").splitlines()
+              if l.strip()]
+    assert "fix:hud:0" in labels and "route_r0" in labels and "capture-director" in labels
+
+
 def test_build_game_dry_run(tmp_path: Path):
     from harness.tools.workspace import Workspace
     from harness.workflow import Workflow
