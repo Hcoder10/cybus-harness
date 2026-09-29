@@ -28,6 +28,7 @@
 #   CYBUS_MM_LIMIT        images per prompt (JSON)                       {"image": 8}
 #   CYBUS_CHAT_TEMPLATE_KWARGS  server-wide template kwargs (JSON), e.g. {"enable_thinking": false}
 #   CYBUS_EXTRA_ARGS      extra vLLM flags, appended as-is               (none)
+#   CYBUS_SPEC_TOKENS     MTP speculative tokens (0 = off)               2  (Qwen3.8 ships an MTP head: ~2x decode)
 #   CYBUS_VLLM            vllm executable                                vllm
 set -euo pipefail
 
@@ -46,6 +47,7 @@ DEFAULT_MM_LIMIT='{"image": 8}'
 MM_LIMIT="${CYBUS_MM_LIMIT:-$DEFAULT_MM_LIMIT}"
 CHAT_KWARGS="${CYBUS_CHAT_TEMPLATE_KWARGS:-}"
 EXTRA="${CYBUS_EXTRA_ARGS:-}"
+SPEC_TOKENS="${CYBUS_SPEC_TOKENS:-2}"
 VLLM="${CYBUS_VLLM:-vllm}"
 
 # The key travels in the environment: vLLM reads VLLM_API_KEY, and argv is visible to every user via ps.
@@ -70,6 +72,11 @@ args+=(--max-model-len "$MAX_LEN" --max-num-seqs "$MAX_SEQS" --gpu-memory-utiliz
        --enable-auto-tool-choice --tool-call-parser "$TOOL_PARSER")
 if [ -n "$REASONING_PARSER" ] && [ "$REASONING_PARSER" != "none" ]; then
   args+=(--reasoning-parser "$REASONING_PARSER")
+fi
+# Qwen3.8 checkpoints carry one MTP layer: vLLM drafts with it (measured on an RTX PRO 6000: mean acceptance
+# ~2.4 tokens at 2 speculative tokens, single-stream decode 25 -> 50 tok/s). CYBUS_SPEC_TOKENS=0 turns it off.
+if [ "$SPEC_TOKENS" != "0" ] && [[ "$EXTRA" != *speculative-config* ]]; then
+  args+=(--speculative-config "{\"method\":\"mtp\",\"num_speculative_tokens\":$SPEC_TOKENS}")
 fi
 if [ -n "$CHAT_KWARGS" ]; then
   args+=(--default-chat-template-kwargs "$CHAT_KWARGS")

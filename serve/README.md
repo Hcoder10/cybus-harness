@@ -26,6 +26,8 @@ CYBUS_LORA=<hf-org>/<cybus-adapter> CYBUS_TOOL_PARSER=qwen3_xml bash serve/vllm_
 CYBUS_DRY_RUN=1 bash serve/vllm_cybus.sh      # print the vllm command without starting anything
 ```
 
+**Speed.** Qwen3.8 ships a multi-token-prediction (MTP) layer; the script drafts with it by default (`CYBUS_SPEC_TOKENS=2`). Measured on one RTX PRO 6000 Max-Q (bf16): single-stream decode 25 -> 50 tok/s, mean acceptance ~2.4 tokens. Thinking multiplies output ~5-8x on coding tasks; the harness keeps it on for planning roles and off for builders and the judge via `HARNESS_<ROLE>_EXTRA='{"chat_template_kwargs":{"enable_thinking":false}}'`.
+
 The first start is slow: torch.compile (~5 min), multimodal profiling and CUDA graph capture add up to ~10 minutes
 before `Application startup complete`. The compile cache under `~/.cache/vllm` makes later starts faster.
 `CYBUS_EXTRA_ARGS=--enforce-eager` skips compilation and graphs (about a minute to start) at the cost of slower
