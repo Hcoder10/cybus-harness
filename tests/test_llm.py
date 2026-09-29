@@ -81,6 +81,19 @@ def chat(llm, messages, tools=None):
     return asyncio.run(llm.chat(messages, tools))
 
 
+def test_thinking_runaway_is_retried_without_thinking():
+    """A reply that spent the whole budget thinking (finish=length, no content, no calls) is asked again with
+    thinking off; a model already told not to think is not retried."""
+    server = Server(openai_reply("", finish="length"), openai_reply("the answer"))
+    r = chat(make_llm(server), [Message("user", "hi")])
+    assert r.message.content == "the answer" and len(server.requests) == 2
+    assert server.body(1)["chat_template_kwargs"]["enable_thinking"] is False
+    assert "chat_template_kwargs" not in server.body(0)
+    server2 = Server(openai_reply("", finish="length"))
+    llm2 = make_llm(server2, extra={"chat_template_kwargs": {"enable_thinking": False}})
+    assert chat(llm2, [Message("user", "hi")]).finish_reason == "length" and len(server2.requests) == 1
+
+
 def test_native_tool_calls_and_request_shape():
     server = Server(openai_reply("", [
         {"id": "call_a", "type": "function", "function": {"name": "read_file", "arguments": '{"path": "src/main.luau"}'}},

@@ -236,6 +236,9 @@ class Build:
         self.extra_tools: list[Tool] = []          # e.g. paint_texture / list_textures from harness.tools.art
         self.item_lock: dict[str, asyncio.Lock] = {}
         (self.run_dir / "verdicts").mkdir(parents=True, exist_ok=True)
+        # Revision rounds apply a given list of changes: thinking adds little and can run away (Qwen3.8 spent a whole
+        # 16k budget thinking, three times, on a style revision). They use the 'reviser' role when it is configured.
+        self.reviser = "reviser" if "reviser" in getattr(wf, "roles", {}) else "lead"
 
     # ------------------------------------------------------------------ helpers
     def save(self, name: str, obj: Any) -> None:
@@ -415,7 +418,7 @@ class Build:
                                   schema=schemas.CRIT, label="plan-critique")
             serious = [i for i in (crit or {}).get("issues", []) if i.get("severity") in ("blocker", "major")]
             if crit and (crit.get("verdict") == "revise" or serious):
-                revised = await wf.agent(prompts.plan_revise_brief(plan, crit), role="lead",
+                revised = await wf.agent(prompts.plan_revise_brief(plan, crit), role=self.reviser,
                                          system=prompts.LEAD_SYSTEM, schema=schemas.PLAN, label="plan-revise")
                 plan = revised if isinstance(revised, dict) else plan
         self.plan = plan
@@ -446,7 +449,7 @@ class Build:
                 grafts, why = list(pick.get("graft") or [])[:3], str(pick.get("why", ""))
         issues = contrast_issues(style)
         if issues or grafts:
-            revised = await wf.agent(prompts.style_revise_brief(style, issues, grafts), role="art",
+            revised = await wf.agent(prompts.style_revise_brief(style, issues, grafts), role=self.reviser,
                                      system=prompts.ART_SYSTEM, schema=schemas.STYLE, label="style-revise")
             if isinstance(revised, dict) and len(contrast_issues(revised)) <= len(issues):
                 style = revised
@@ -503,7 +506,7 @@ class Build:
         problems = arch_problems(arch)
         if problems:                        # one repair round: placement mistakes make code silently not run
             wf.log(f"architecture: {len(problems)} placement problem(s); asking the lead to fix them")
-            fixed = await wf.agent(prompts.arch_fix_brief(arch, problems), role="lead", system=prompts.LEAD_SYSTEM,
+            fixed = await wf.agent(prompts.arch_fix_brief(arch, problems), role=self.reviser, system=prompts.LEAD_SYSTEM,
                                    schema=schemas.ARCH, label="architecture-fix")
             if isinstance(fixed, dict) and len(arch_problems(fixed)) < len(problems):
                 arch = fixed
@@ -704,7 +707,7 @@ class Build:
                 "Assign each issue to the work item that must fix it (by the tile label / item id and the files each "
                 f"item owns).\n\nITEMS\n{prompts.compact_json([{'id': i['id'], 'title': i['title'], 'files': i['files']} for i in self.items], 4000)}"
                 f"\n\nISSUES\n" + "\n".join(f"- [{i.severity}] {i.where}: {i.problem} -> {i.fix}" for i in issues[:40]),
-                role="lead", system=prompts.LEAD_SYSTEM, schema=schemas.ROUTE, label=f"route_r{rnd}")
+                role=self.reviser, system=prompts.LEAD_SYSTEM, schema=schemas.ROUTE, label=f"route_r{rnd}")
             routed: dict[str, list[str]] = {}
             for a in (route or {}).get("assignments", []):
                 if a.get("item_id") in self.done:
@@ -874,7 +877,7 @@ async def run_build(idea: dict, run_dir: Path, *, cfg: BuildConfig | None = None
     from harness.tools.workspace import Workspace
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
-    roles = {r: llm_from_env(r) for r in ("lead", "art", "builder", "critic", "judge")}
+    roles = {r: llm_from_env(r) for r in ("lead", "art", "builder", "critic", "judge", "reviser")}
     wf = Workflow(f"build_game:{idea.get('id', 'game')}", run_dir, roles, resume=resume)
     ws = Workspace(run_dir / "workspace")
     run_id = re.sub(r"[^a-z0-9_]+", "_", f"{idea.get('id', 'game')}_{run_dir.name}".lower())

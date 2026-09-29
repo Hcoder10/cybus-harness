@@ -39,7 +39,7 @@ def lighting_node(style: dict | None) -> dict:
     L = (style or {}).get("lighting") or {}
     node: dict = {"$className": "Lighting", "$properties": {
         "Technology": "Future",
-        "ClockTime": _num(L.get("ClockTime"), 14, 0, 24),
+        "ClockTime": __import__("harness.tokens", fromlist=["clock_time"]).clock_time(L.get("ClockTime", 14), []),
         "Brightness": _num(L.get("Brightness"), 2, 0, 10),
         "ExposureCompensation": _num(L.get("ExposureCompensation"), 0, -3, 3),
         "Ambient": _color(L.get("Ambient"), (0.27, 0.27, 0.27)),

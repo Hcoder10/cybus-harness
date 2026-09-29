@@ -171,7 +171,7 @@ def build_tokens(style: dict) -> tuple[str, list[str]]:
 
     L = style.get("lighting") or {}
     lighting = {
-        "ClockTime": _num(L.get("ClockTime", 14), 14, 0, 24, p, "lighting.ClockTime"),
+        "ClockTime": clock_time(L.get("ClockTime", 14), p),
         "Brightness": _num(L.get("Brightness", 2), 2, 0, 10, p, "lighting.Brightness"),
         "ExposureCompensation": _num(L.get("ExposureCompensation", 0), 0, -3, 3, p, "lighting.ExposureCompensation"),
         "Ambient": _hex(L.get("Ambient", "#464646"), "#464646", p, "lighting.Ambient"),
@@ -206,12 +206,25 @@ def build_tokens(style: dict) -> tuple[str, list[str]]:
     return "\n".join(out), p
 
 
+def clock_time(v, problems: list[str]) -> float:
+    """Lighting.ClockTime in hours; a value in minutes (24 < v <= 1440, e.g. 1410 = 23:30) is converted."""
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        problems.append(f"lighting.ClockTime={v!r} is not a number; used 14")
+        return 14.0
+    if 24 < x <= 1440:
+        problems.append(f"lighting.ClockTime={x:g} read as minutes = {x / 60:g} h")
+        return x / 60
+    return _num(x, 14, 0, 24, problems, "lighting.ClockTime")
+
+
 def lighting_script(style: dict) -> str:
     """Edit-mode Luau that applies the style guide's lighting to the open place (Lighting + post effects)."""
     L = style.get("lighting") or {}
     p: list[str] = []
     lines = ["local Lighting = game:GetService(\"Lighting\")",
-             f"Lighting.ClockTime = {_num(L.get('ClockTime', 14), 14, 0, 24, p, 'c'):g}",
+             f"Lighting.ClockTime = {clock_time(L.get('ClockTime', 14), p):g}",
              f"Lighting.Brightness = {_num(L.get('Brightness', 2), 2, 0, 10, p, 'b'):g}",
              f"Lighting.ExposureCompensation = {_num(L.get('ExposureCompensation', 0), 0, -3, 3, p, 'e'):g}",
              f"Lighting.Ambient = Color3.fromHex({_lua_str(_hex(L.get('Ambient', '#464646'), '#464646', p, 'a'))})",

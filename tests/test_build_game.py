@@ -358,7 +358,7 @@ def test_build_game_with_fake_stage(tmp_path: Path):
     from harness.tools.workspace import Workspace
     from harness.workflow import Workflow
     fake = JudgingFakeLLM()
-    roles = {r: fake for r in ("lead", "art", "builder", "critic", "judge")}
+    roles = {r: fake for r in ("lead", "art", "builder", "critic", "judge", "reviser")}
     wf = Workflow("fake-stage", tmp_path, roles, resume=False)
     ws = Workspace(tmp_path / "workspace")
     stage = FakeStage()

@@ -494,12 +494,30 @@ class LLM:
             if not data.get("choices"):
                 raise LLMError(f"{self.model}: reply has no choices: {self._redact(json.dumps(data)[:500])}")
             message, usage, finish = _from_openai(data)
+            if finish == "length" and not message.content and not message.tool_calls and not self._thinking_off():
+                # The whole completion budget went to thinking (Qwen3.8 did this 3 times in a row on one task):
+                # answer again with thinking off rather than lose the step.
+                log.warning("%s: completion budget spent on thinking; retrying this step without thinking", self.model)
+                url, headers, body = self._openai_request(messages, tools)
+                kwargs = dict(body.get("chat_template_kwargs") or {})
+                kwargs["enable_thinking"] = False
+                body["chat_template_kwargs"] = kwargs
+                retry = await self._post(url, headers, body)
+                if retry.get("choices"):
+                    data = retry
+                    message, usage2, finish = _from_openai(data)
+                    usage = {k: (usage.get(k, 0) or 0) + (usage2.get(k, 0) or 0) for k in set(usage) | set(usage2)
+                             if isinstance(usage.get(k, 0), (int, float)) and isinstance(usage2.get(k, 0), (int, float))}
         text = message.content
         if tools and not message.tool_calls and isinstance(text, str) and ("<tool_call>" in text or "<function=" in text):
             visible, calls = parse_text_tool_calls(text, tools)
             if calls:
                 message.content, message.tool_calls, finish = visible, calls, "tool_calls"
         return LLMResponse(message, usage, finish, data)
+
+    def _thinking_off(self) -> bool:
+        kwargs = (self.extra or {}).get("chat_template_kwargs") or {}
+        return kwargs.get("enable_thinking") is False
 
     async def aclose(self) -> None:
         """Close the pooled HTTP client of the running event loop (optional; the pool is also dropped with the loop)."""
