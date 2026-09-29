@@ -114,17 +114,54 @@ def arch_brief(plan: dict, style_md: str, kit_api: str) -> str:
             "to exactly one item.")
 
 
+# Which craft notes (sections of roblox_craft.md) and spec references each aspect's builder gets.
+CRAFT_SECTIONS = {
+    "ui_menus": ("UI",), "hud": ("UI", "Feel and VFX"), "camera": ("Camera",), "game_feel": ("Feel and VFX", "Camera"),
+    "vfx": ("Feel and VFX",), "animation": ("Animation",), "world_art": ("World and lighting",),
+    "characters": ("Animation", "World and lighting"), "audio_design": ("Audio",),
+    "core_loop": ("Project shape", "Robustness"), "cohesion": ("UI", "World and lighting"), "polish": ("Robustness", "UI"),
+}
+SPEC_PLAYBOOKS = {
+    "texture_spec": {"ui_menus", "hud", "vfx", "world_art", "characters", "polish", "cohesion"},
+    "animation_spec": {"animation", "characters", "game_feel"},
+    "vfx_camera_spec": {"vfx", "camera", "game_feel"},
+}
+
+
+def craft_notes(aspect: str) -> str:
+    text = playbook("roblox_craft")
+    wanted = ("Project shape",) + CRAFT_SECTIONS.get(aspect, ())
+    parts, keep = [], False
+    for line in text.splitlines():
+        if line.startswith("## "):
+            keep = line[3:].strip() in wanted
+        if keep:
+            parts.append(line)
+    return "\n".join(parts)
+
+
+def spec_refs(aspect: str, limit: int = 12000) -> str:
+    out = [f"=== {name} ===\n{playbook(name)[:limit]}" for name, aspects in SPEC_PLAYBOOKS.items()
+           if aspect in aspects and playbook(name)]
+    return "\n\n".join(out)
+
+
 def item_brief(item: dict, plan: dict, style_md: str, arch: dict, files: dict[str, str], extra: str = "") -> str:
+    from harness.kit import KIT_API
     owned = "\n".join(f"- {f}" for f in item.get("files", []))
     ctx = "\n\n".join(f"--- {path} ---\n{src}" for path, src in files.items())
     others = [{"path": f["path"], "api": f["api"]} for f in arch.get("files", []) if f["path"] not in item.get("files", [])]
+    refs = spec_refs(item["aspect"])
     return (f"YOUR ITEM: {item['id']} - {item['title']} (aspect: {item['aspect']})\n{item['brief']}\n\n"
             f"FILES YOU OWN\n{owned}\n\n"
             f"GAME\n{plan.get('title', '')}: {plan.get('fantasy', '')}\nCore loop: {' -> '.join(plan.get('core_loop', []))}\n"
             f"Signature moment: {plan.get('signature_moment', '')}\n\n"
             f"STYLE GUIDE\n{style_md[:5000]}\n\n"
             f"RUBRIC YOUR WORK WILL BE JUDGED ON\n{playbook('rubric_' + item['aspect'])[:3500]}\n\n"
-            f"OTHER FILES' APIS (call these; do not edit them)\n{compact_json(others, 3500)}\n\n"
+            f"KIT (already in the game)\n{KIT_API}\n\n"
+            f"CRAFT NOTES\n{craft_notes(item['aspect'])}\n\n"
+            + (f"SPEC REFERENCES FOR YOUR TOOLS\n{refs}\n\n" if refs else "")
+            + f"OTHER FILES' APIS (call these; do not edit them)\n{compact_json(others, 3500)}\n\n"
             f"REMOTES\n{compact_json(arch.get('remotes', []), 1500)}\n\n"
             f"HOW IT WILL BE CAPTURED\n{compact_json(item.get('capture', {}), 800)}\n\n"
             + (f"CURRENT CONTENT OF RELEVANT FILES\n{ctx}\n\n" if ctx else "")
@@ -134,15 +171,19 @@ def item_brief(item: dict, plan: dict, style_md: str, arch: dict, files: dict[st
 
 def fix_brief(item: dict, style_md: str, fix_list: str, strengths: list[str], files: dict[str, str],
               score: float) -> str:
+    from harness.kit import KIT_API
     ctx = "\n\n".join(f"--- {path} ---\n{src}" for path, src in files.items())
     keep = "\n".join(f"- {s}" for s in strengths[:8]) or "- (none noted)"
     owned = "\n".join(f"- {f}" for f in item.get("files", []))
+    refs = spec_refs(item["aspect"], limit=6000)
     return (f"ITEM: {item['id']} - {item['title']} (aspect: {item['aspect']})\n{item['brief']}\n\n"
             f"FILES YOU OWN\n{owned}\n\n"
             f"REVIEW SCORE: {score:.1f}/10 on the studio scale. The captures the reviewers saw are attached.\n\n"
             f"ISSUES TO FIX (most severe first)\n{fix_list}\n\nKEEP THESE STRENGTHS\n{keep}\n\n"
             f"STYLE GUIDE\n{style_md[:4000]}\n\nRUBRIC\n{playbook('rubric_' + item['aspect'])[:3000]}\n\n"
-            f"CURRENT CODE (files you own)\n{ctx}\n\nFix the issues in the code now, then submit your report.")
+            f"KIT (already in the game)\n{KIT_API}\n\n"
+            + (f"SPEC REFERENCES FOR YOUR TOOLS\n{refs}\n\n" if refs else "")
+            + f"CURRENT CODE (files you own)\n{ctx}\n\nFix the issues in the code now, then submit your report.")
 
 
 def director_brief(plan: dict, arch: dict, items: list[dict], evidence: list[dict], commands: dict) -> str:

@@ -816,6 +816,11 @@ async def run_build(idea: dict, run_dir: Path, *, cfg: BuildConfig | None = None
             build.extra_tools = art_tools(TexturePacks(ws), run_dir / "art")
         except ImportError:
             log.warning("texture painting unavailable (harness.tools.art missing)")
+        try:
+            from harness.tools.anim import ClipPack, anim_tools
+            build.extra_tools = build.extra_tools + anim_tools(ClipPack(ws), run_dir / "art")
+        except ImportError:
+            log.warning("clip authoring unavailable (harness.tools.anim missing)")
         report = await build.run(idea, evidence_plan)
         final = run_dir / "place" / "final.rbxl"
         if final.exists():
