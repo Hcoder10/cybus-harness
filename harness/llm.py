@@ -672,6 +672,10 @@ def llm_from_env(role: str) -> LLM:
             extra = json.loads(extra_raw)
         except ValueError as e:
             raise ValueError(f"HARNESS_{tag}_EXTRA / HARNESS_DEFAULT_EXTRA is not valid JSON: {e}") from e
+    # A busy shared server can take longer than 10 minutes for one long reply; timing out and retrying only adds load
+    # (live: a camera builder gave up after 6 ReadTimeouts in an hour while five builds shared one GPU).
+    timeout = own("TIMEOUT") or default("TIMEOUT")
     return LLM(base_url or "", model, api_key=api_key, provider=provider,
                max_tokens=int(max_tokens) if max_tokens else 16384,
-               temperature=float(temperature) if temperature else 0.6, extra=extra)
+               temperature=float(temperature) if temperature else 0.6, extra=extra,
+               timeout=float(timeout) if timeout else 1800)
