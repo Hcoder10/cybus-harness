@@ -82,11 +82,13 @@ def test_normalize_arch_ownership_and_paths():
             ]}
     out, notes = normalize_arch(arch, 16)
     ids = [i["id"] for i in out["items"]]
-    assert ids == ["core_loop", "hud"]
+    assert ids == ["core_loop", "hud", "empty"]                     # a file-less item gets a LocalScript of its own
+    assert out["items"][2]["files"] == ["StarterPlayer/StarterPlayerScripts/Empty.client.luau"]
     assert out["items"][0]["files"] == ["ServerScriptService/Game.server.luau"]      # Tokens is harness-owned
     assert out["items"][1]["files"] == ["StarterPlayer/StarterPlayerScripts/Hud.client.luau"]
     assert out["items"][1]["aspect"] == "core_loop" and out["items"][1]["depends_on"] == ["core_loop"]
     assert any("already owned" in n for n in notes) and any("dropped" in n for n in notes)
+    assert any("it now owns" in n for n in notes)
 
 
 def test_judge_parsing_and_verdict():

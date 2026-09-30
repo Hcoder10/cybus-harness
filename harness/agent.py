@@ -96,7 +96,7 @@ class Agent:
     max_submit_nudges = 2    # schema runs: how often to ask for `submit` when the model stops without it
 
     def __init__(self, llm: LLM, system: str, tools: list[Tool], name: str = "agent", max_steps: int = 40,
-                 max_tool_chars: int = 16000, context_budget_tokens: int = 48000):
+                 max_tool_chars: int = 16000, context_budget_tokens: int = 40000):
         self.llm = llm
         self.system = system
         self.tools = list(tools or [])

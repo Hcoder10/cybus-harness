@@ -200,8 +200,17 @@ def normalize_arch(arch: dict, max_items: int) -> tuple[dict, list[str]]:
             mine.append(p)
             files.setdefault(p, {"path": p, "responsibility": it.get("title", ""), "api": "(see item brief)"})
         if not mine:
-            notes.append(f"item {iid} owns no files; dropped")
-            continue
+            # Every file it listed belongs to an earlier item: rather than lose the work (e.g. all the animation),
+            # give it a self-running LocalScript of its own (client-side craft is what such items usually are).
+            own = "StarterPlayer/StarterPlayerScripts/" + "".join(w.capitalize() for w in iid.split("_")) + ".client.luau"
+            if own in owner or own in HARNESS_OWNED:
+                notes.append(f"item {iid} owns no files; dropped")
+                continue
+            owner[own] = iid
+            mine.append(own)
+            files[own] = {"path": own, "responsibility": it.get("title", ""),
+                          "api": "self-running LocalScript (nothing requires it)"}
+            notes.append(f"item {iid} listed only files owned by other items; it now owns {own}")
         aspect = it.get("aspect") if it.get("aspect") in schemas.ASPECTS else "core_loop"
         cap = it.get("capture") or {}
         items.append({**it, "id": iid, "aspect": aspect, "files": mine,

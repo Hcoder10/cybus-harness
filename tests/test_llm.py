@@ -94,6 +94,15 @@ def test_thinking_runaway_is_retried_without_thinking():
     assert chat(llm2, [Message("user", "hi")]).finish_reason == "length" and len(server2.requests) == 1
 
 
+def test_context_overflow_retries_with_the_budget_that_fits():
+    msg = ("This model's maximum context length is 65536 tokens. However, you requested 16384 output tokens and your "
+           "prompt contains at least 49153 input tokens, for a total of at least 65537 tokens.")
+    server = Server(httpx.Response(400, json={"error": {"message": msg}}), openai_reply("ok"))
+    r = chat(make_llm(server, max_tokens=16384), [Message("user", "hi")])
+    assert r.message.content == "ok" and server.body(0)["max_tokens"] == 16384
+    assert server.body(1)["max_tokens"] == 65536 - 49153 - 64
+
+
 def test_native_tool_calls_and_request_shape():
     server = Server(openai_reply("", [
         {"id": "call_a", "type": "function", "function": {"name": "read_file", "arguments": '{"path": "src/main.luau"}'}},

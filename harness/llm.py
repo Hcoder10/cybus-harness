@@ -594,6 +594,12 @@ class LLM:
                                        resp.status_code)
                     return data
                 problem, status = f"HTTP {resp.status_code}: {resp.text[:1000]}", resp.status_code
+                fit = _fit_output_budget(resp.text, body) if status == 400 else None
+                if fit is not None:
+                    # prompt + requested output > the server's context window: ask for what still fits, once
+                    log.warning("%s: context window full; retrying with max_tokens=%d", self.model, fit)
+                    body = {**body, ("max_completion_tokens" if "max_completion_tokens" in body else "max_tokens"): fit}
+                    continue
                 if status not in _RETRY_STATUS and status < 500:
                     raise LLMError(f"{self.model}: {self._redact(problem)}", status)
                 wait = _retry_after(resp)
@@ -606,6 +612,22 @@ class LLM:
                         attempt + 1, self.max_retries, wait)
             await asyncio.sleep(wait)
         raise AssertionError("unreachable")
+
+
+_CONTEXT_ERR = re.compile(r"maximum context length is (\d+) tokens.*?(?:requested|request) (\d+) output tokens.*?"
+                          r"prompt contains (?:at least )?(\d+)", re.S)
+
+
+def _fit_output_budget(text: str, body: dict) -> int | None:
+    """From vLLM's context-length 400 ('maximum context length is N ... requested M output tokens and your prompt
+    contains P'), the output budget that fits (N - P - margin), if it is smaller than asked and still useful."""
+    m = _CONTEXT_ERR.search(text or "")
+    if not m:
+        return None
+    window, asked, prompt = (int(x) for x in m.groups())
+    fit = window - prompt - 64
+    current = int(body.get("max_completion_tokens") or body.get("max_tokens") or asked)
+    return fit if 512 <= fit < current else None
 
 
 def llm_from_env(role: str) -> LLM:
