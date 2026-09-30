@@ -354,7 +354,18 @@ class Build:
                 out.setdefault(p, []).extend(probs)
             return out
 
-        async def write_file(path: str, content: str) -> ToolResult:
+        # Live, a HUD builder sent write_file thirteen times with a path and no content (a reply that long arrives
+        # cut off) and spent its last 30 minutes on it. Big files go in parts: write_file, then append_file.
+        in_parts = ("Write big files in parts of at most ~250 lines: write_file with the first part, then append_file "
+                    "with each next part in order (check_code once the last part is in).")
+
+        async def write_file(path: str, content: str | None = None, **extra: Any) -> ToolResult:
+            if content is None:
+                content = next((v for k, v in extra.items() if k in ("contents", "code", "source", "text", "body",
+                                                                      "file_content", "data") and isinstance(v, str)), None)
+            if content is None:
+                return ToolResult(text=f"ERROR: write_file arrived without its content, so nothing was written: a "
+                                       f"reply that long is cut off before the file ends. {in_parts}")
             try:
                 p = mine(path)
             except (PermissionError, ValueError) as e:
@@ -364,6 +375,28 @@ class Build:
             probs = (await problems({p: content})).get(p, [])
             return ToolResult(text=f"wrote {p} ({content.count(chr(10)) + 1} lines)"
                               + ("\nPROBLEMS:\n" + "\n".join(probs[:12]) if probs else "\nno syntax errors"))
+
+        async def append_file(path: str, content: str | None = None) -> ToolResult:
+            if content is None:
+                return ToolResult(text=f"ERROR: append_file arrived without its content. {in_parts}")
+            try:
+                p = mine(path)
+            except (PermissionError, ValueError) as e:
+                return ToolResult(text=f"ERROR: {e}")
+            try:
+                src = ws.ws.read(p)
+            except OSError:
+                src = ""
+            if STUB_MARK in src:                  # the first part replaces the harness placeholder
+                src = ""
+            new_src = src + ("\n" if src and not src.endswith("\n") else "") + content
+            ws.ws.write(p, new_src)
+            reads["since_write"] = 0
+            probs = (await problems({p: new_src})).get(p, [])
+            return ToolResult(text=f"appended {content.count(chr(10)) + 1} lines to {p} (now "
+                                   f"{new_src.count(chr(10)) + 1})" + ("\nPROBLEMS (expected while parts are still "
+                                                                       "missing):\n" + "\n".join(probs[:8])
+                                                                       if probs else "\nno syntax errors"))
 
         async def edit_file(path: str, old_text: str, new_text: str) -> ToolResult:
             try:
@@ -423,10 +456,16 @@ class Build:
 
         s = {"type": "object", "additionalProperties": False}
         tools = [
-            Tool("write_file", "Create or overwrite one of YOUR files with complete content. Reports syntax problems.",
+            Tool("write_file", "Create or overwrite one of YOUR files with complete content. Reports syntax problems. "
+                               "Over ~250 lines: write the first part here, then the rest with append_file.",
                  {**s, "required": ["path", "content"], "properties": {
                      "path": {"type": "string"}, "content": {"type": "string", "description": "the whole file"}}},
                  write_file, mutating=True),
+            Tool("append_file", "Add the next part of a long file to the end of one of YOUR files (after write_file "
+                                "wrote the first part).",
+                 {**s, "required": ["path", "content"], "properties": {
+                     "path": {"type": "string"}, "content": {"type": "string", "description": "the next part"}}},
+                 append_file, mutating=True),
             Tool("edit_file", "Replace one exact snippet (old_text, which must occur exactly once) in one of YOUR files.",
                  {**s, "required": ["path", "old_text", "new_text"], "properties": {
                      "path": {"type": "string"}, "old_text": {"type": "string"}, "new_text": {"type": "string"}}},

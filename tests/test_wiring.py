@@ -185,3 +185,26 @@ def test_placeholders_left_by_a_builder_get_a_finishing_pass(tmp_path: Path):
     labels = [json.loads(line).get("label") for line in
               (tmp_path / "journal.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
     assert "build:core-finish" in labels and "build:core-retry" not in labels
+
+
+def test_write_without_content_explains_parts_and_append_builds_the_file(tmp_path: Path):
+    from harness.tools.workspace import Workspace
+    from harness.workflow import Workflow
+    ws = Workspace(tmp_path / "workspace")
+    path = "StarterPlayer/StarterPlayerScripts/Hud.luau"
+    ws.write(path, f"-- hud\n-- {STUB_MARK}\nlocal M = {{}}\nreturn M\n")
+    build = Build(Workflow("tools", tmp_path, {}, resume=False), ws, None, None, BuildConfig(), tmp_path)
+    item = {"id": "hud", "aspect": "hud", "files": [path]}
+    tools = {t.name: t for t in build.builder_tools(item)}
+
+    async def go():
+        cut = await tools["write_file"].invoke({"path": path})
+        assert "arrived without its content" in cut.text and "append_file" in cut.text
+        assert STUB_MARK in ws.read(path)                                    # nothing was written
+        first = await tools["append_file"].invoke({"path": path, "content": "local M = {}"})
+        assert "appended 1 lines" in first.text and ws.read(path) == "local M = {}"   # the stub was replaced
+        await tools["append_file"].invoke({"path": path, "content": "return M"})
+        assert ws.read(path) == "local M = {}\nreturn M"
+        alias = await tools["write_file"].invoke({"path": path, "contents": "return {}"})   # a renamed argument
+        assert alias.text.startswith("wrote") and ws.read(path) == "return {}"
+    asyncio.run(go())

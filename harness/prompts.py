@@ -237,7 +237,9 @@ def item_brief(item: dict, plan: dict, style_md: str, arch: dict, files: dict[st
             f"HOW IT WILL BE CAPTURED\n{compact_json(item.get('capture', {}), 800)}\n\n"
             + (f"CURRENT CONTENT OF YOUR FILES\n{ctx}\n\n" if ctx else "")
             + (extra + "\n\n" if extra else "")
-            + "Build it now: write your files, then submit your report.")
+            + "Build it now: write your files, then submit your report. A reply holds about 1,000 lines, so write any "
+              "file longer than ~250 lines in parts: write_file with the first part, then append_file for each next "
+              "part.")
 
 
 def fix_brief(item: dict, plan: dict, style_md: str, arch: dict, fix_list: str, strengths: list[str],
