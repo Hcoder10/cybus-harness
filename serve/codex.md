@@ -18,6 +18,16 @@ So: use `responses` with a current Codex. If your vLLM build mishandles `/v1/res
 missing, reasoning items rejected), either run a Codex release that still has `wire_api = "chat"`, or put a proxy that
 translates Responses to Chat Completions in front of vLLM.
 
+**Checked live on 2026-09-30.** Codex 0.153.4 ran with `wire_api = "responses"` against Cybus on vLLM 0.27.1
+(qwen3_xml) on Windows, via `codex exec` on a small task: a typed ModuleScript plus a server script that requires it.
+Streaming and tool calls work, and Cybus finished the task. Three Windows traps:
+- **Command sandbox.** In `codex exec` it came up read-only even with `-s workspace-write`, and every command,
+  `apply_patch` included, was "blocked by policy". Run in an approving session, or use
+  `--dangerously-bypass-approvals-and-sandbox` in a scratch or version-controlled folder.
+- **`CODEX_HOME`.** It must not be under `%TEMP%`: Codex refuses to create its helper binaries there.
+- **`apply_patch` shim.** The `.bat` shim mangles multi-line patches. Cybus worked around it by calling
+  `codex.exe --codex-run-as-apply-patch` directly.
+
 ## Configuration
 
 `~/.codex/config.toml` (`%USERPROFILE%\.codex\config.toml` on Windows):

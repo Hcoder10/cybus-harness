@@ -10,6 +10,12 @@ The translation was checked end to end with Claude Code 2.1.284 against a script
 real requests (system prompt, 22 tools, streaming) go through, a streamed tool call runs locally, and the tool result
 comes back as an OpenAI tool message.
 
+Checked live on 2026-09-30 with Claude Code 2.1.285 against Cybus itself (Qwen3.8-27B on vLLM 0.27.1, qwen3_xml,
+98k window, thinking off through `GATEWAY_EXTRA_BODY`). The task was headless: `claude -p ... --bare
+--strict-mcp-config --permission-mode acceptEdits`. It asked for a typed ModuleScript and a server script that
+requires it. Claude Code wrote both files correctly, read them back and finished in 6 turns (4 minutes on a GPU shared
+with three builds). `--bare` authenticates only with `ANTHROPIC_API_KEY`: set that instead of `ANTHROPIC_AUTH_TOKEN`.
+
 ## 1. Serve Cybus
 
 Follow [README.md](README.md), with two settings that matter for Claude Code:
