@@ -228,6 +228,23 @@ def aspect_context(aspect: str, spec_limit: int = 12000) -> str:
             + (f"SPEC REFERENCES FOR YOUR TOOLS\n{refs}\n\n" if refs else ""))
 
 
+def finish_brief(item: dict, plan: dict, style_md: str, arch: dict, missing: list[str], written: dict[str, int]) -> str:
+    """For an item whose build left some of its files as harness placeholders: write exactly those. Same cached
+    prefix as the item brief; the missing files come in the order to write them (entry scripts first)."""
+    apis = {f["path"]: f.get("api", "") for f in arch.get("files", [])}
+    todo = "\n".join(f"- {p}\n  API: {apis.get(p, '')[:400]}" for p in missing)
+    done = "\n".join(f"- {p} ({n} lines)" for p, n in written.items()) or "- (none)"
+    return (shared_context(plan, style_md, arch) + aspect_context(item["aspect"])
+            + f"YOUR ITEM: {item['id']} - {item['title']} (aspect: {item['aspect']})\n{item['brief']}\n\n"
+            f"STILL MISSING (harness placeholders: nothing of theirs exists in the game yet)\n{todo}\n\n"
+            f"ALREADY WRITTEN (leave them as they are; read_file one only for a detail you need)\n{done}\n\n"
+            "Write the missing files now, in the order listed: complete, working code for their part of the brief. An "
+            "entry script (.server.luau / .client.luau) comes first: it is short (it requires the modules and starts "
+            "them), and without it nothing of this item runs. Only the missing files can be written in this pass. A "
+            "reply holds about 1,000 lines: write a file longer than ~250 lines in parts (write_file, then "
+            "append_file). Then submit your report.")
+
+
 def item_brief(item: dict, plan: dict, style_md: str, arch: dict, files: dict[str, str], extra: str = "") -> str:
     owned = "\n".join(f"- {f}" for f in item.get("files", []))
     ctx = "\n\n".join(f"--- {path} ---\n{src}" for path, src in files.items())
@@ -237,9 +254,10 @@ def item_brief(item: dict, plan: dict, style_md: str, arch: dict, files: dict[st
             f"HOW IT WILL BE CAPTURED\n{compact_json(item.get('capture', {}), 800)}\n\n"
             + (f"CURRENT CONTENT OF YOUR FILES\n{ctx}\n\n" if ctx else "")
             + (extra + "\n\n" if extra else "")
-            + "Build it now: write your files, then submit your report. A reply holds about 1,000 lines, so write any "
-              "file longer than ~250 lines in parts: write_file with the first part, then append_file for each next "
-              "part.")
+            + "Build it now: write your files, then submit your report. Write any entry script you own (.server.luau / "
+              ".client.luau) early: nothing of your item runs without it. A reply holds about 1,000 lines, so write "
+              "any file longer than ~250 lines in parts: write_file with the first part, then append_file for each "
+              "next part.")
 
 
 def fix_brief(item: dict, plan: dict, style_md: str, arch: dict, fix_list: str, strengths: list[str],

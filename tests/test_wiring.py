@@ -158,20 +158,30 @@ def test_build_gate_sends_wiring_problems_back_and_moves_orphan_stubs(tmp_path: 
 class HalfDoneLLM(FakeLLM):
     """The core-loop builder writes its script and leaves its config module a placeholder until told."""
 
-    def __init__(self):
+    def __init__(self, stubborn: bool = False):
         super().__init__()
         self.finish_briefs: list[str] = []
+        self.main_builds = 0
+        self.stubborn = stubborn            # never writes the config module, even when told
+        self.refusals: list[str] = []
 
     async def chat(self, messages, tools=None):
         names = [t["function"]["name"] for t in tools or []]
         task = messages[1].content if isinstance(messages[1].content, str) else messages[1].content[0]["text"]
         wrote = any(m.role == "tool" for m in messages)
+        self.refusals += [m.content for m in messages if m.role == "tool" and "already written" in str(m.content)]
         if "write_file" in names and not wrote and "- ServerScriptService/Game.server.luau" in task:
-            if "still the harness placeholder" in task:
+            if "STILL MISSING" in task:
                 self.finish_briefs.append(task)
-                calls = [ToolCall("f", "write_file", {"path": "ReplicatedStorage/Shared/Config.luau",
-                                                      "content": "local M = {rounds = 3}\nreturn M\n"})]
+                if self.stubborn:
+                    calls = [ToolCall("s", "submit", {"summary": "nothing", "files": [], "how_to_see_it": "-"})]
+                else:        # also tries to rewrite a finished file, which this pass may not touch
+                    calls = [ToolCall("g", "write_file", {"path": "ServerScriptService/Game.server.luau",
+                                                          "content": "print('rewritten')\n"}),
+                             ToolCall("f", "write_file", {"path": "ReplicatedStorage/Shared/Config.luau",
+                                                          "content": "local M = {rounds = 3}\nreturn M\n"})]
             else:
+                self.main_builds += 1
                 calls = [ToolCall("w", "write_file", {"path": "ServerScriptService/Game.server.luau",
                                                       "content": "print('rounds')\n"})]
             return LLMResponse(Message("assistant", "", tool_calls=calls), {}, "tool_calls", {})
@@ -187,13 +197,32 @@ def test_placeholders_left_by_a_builder_get_a_finishing_pass(tmp_path: Path):
     report = asyncio.run(Build(Workflow("finish", tmp_path, roles, resume=False), ws, None, fake, BuildConfig(),
                                tmp_path).run({"id": "harbour", "pitch": "x"}))
     assert len(fake.finish_briefs) == 1
-    assert "ReplicatedStorage/Shared/Config.luau" in fake.finish_briefs[0].rsplit("still the harness placeholder", 1)[1]
+    missing = fake.finish_briefs[0].split("STILL MISSING", 1)[1].split("ALREADY WRITTEN", 1)[0]
+    assert "ReplicatedStorage/Shared/Config.luau" in missing and "Game.server.luau" not in missing
     assert "rounds = 3" in ws.read("ReplicatedStorage/Shared/Config.luau")
-    assert ws.read("ServerScriptService/Game.server.luau") == "print('rounds')\n"
+    assert ws.read("ServerScriptService/Game.server.luau") == "print('rounds')\n"     # the finishing pass could not
+    assert fake.refusals and "may only write ReplicatedStorage/Shared/Config.luau" in fake.refusals[0]
     assert report["stubs_left"] == []
     labels = [json.loads(line).get("label") for line in
               (tmp_path / "journal.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
     assert "build:core-finish" in labels and "build:core-retry" not in labels
+
+
+def test_resuming_a_built_item_with_placeholders_only_finishes_them(tmp_path: Path):
+    from harness.tools.workspace import Workspace
+    from harness.workflow import Workflow
+    first = HalfDoneLLM(stubborn=True)
+    roles = {r: first for r in ("lead", "art", "builder", "critic", "judge")}
+    report = asyncio.run(Build(Workflow("a", tmp_path, roles, resume=False), Workspace(tmp_path / "workspace"), None,
+                               first, BuildConfig(), tmp_path).run({"id": "harbour", "pitch": "x"}))
+    assert report["stubs_left"] == ["ReplicatedStorage/Shared/Config.luau"] and first.main_builds == 1
+    second = HalfDoneLLM()
+    roles = {r: second for r in ("lead", "art", "builder", "critic", "judge")}
+    ws = Workspace(tmp_path / "workspace")
+    report = asyncio.run(Build(Workflow("b", tmp_path, roles, resume=True), ws, None, second, BuildConfig(),
+                               tmp_path).run({"id": "harbour", "pitch": "x"}))
+    assert second.main_builds == 0 and len(second.finish_briefs) == 1      # no rebuild of what works
+    assert report["stubs_left"] == [] and "rounds = 3" in ws.read("ReplicatedStorage/Shared/Config.luau")
 
 
 def test_write_without_content_explains_parts_and_append_builds_the_file(tmp_path: Path):

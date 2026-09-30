@@ -332,8 +332,11 @@ class Build:
             out.setdefault(p, []).extend("API " + x for x in v)
         return out
 
-    def builder_tools(self, item: dict) -> list[Tool]:
+    def builder_tools(self, item: dict, writable: set[str] | None = None) -> list[Tool]:
+        """The builder's tools. `writable` narrows what it may write (a finishing pass writes only the files still
+        missing: live, one spent its 28 steps improving finished files and never wrote the client entry script)."""
         owned = set(item["files"])
+        can_write = owned if writable is None else owned & set(writable)
         ws = self
         # Cybus over-explores (measured before: a third of episodes staged no edit). Live, a track builder spent 28
         # steps reading files and ran out of steps. Reads in a row without a write earn a nudge in the tool result.
@@ -345,6 +348,10 @@ class Build:
             if p not in owned:
                 raise PermissionError(f"{p} is not yours. Yours: {', '.join(sorted(owned))}. Put changes to other "
                                       "files under 'requests' in your report.")
+            if p not in can_write:
+                raise PermissionError(f"{p} is already written; in this pass you may only write "
+                                      f"{', '.join(sorted(can_write))} (the files still missing). Leave the others "
+                                      "as they are.")
             return p
 
         async def problems(sources: dict[str, str]) -> dict[str, list[str]]:
@@ -726,18 +733,31 @@ class Build:
                                       schema=schemas.REPORT, label=label + "-retry", max_steps=self.cfg.builder_steps)
         elif unbuilt:
             # It wrote some files and left others as placeholders (live: a movement + flashlight item wrote
-            # Movement.luau, reported both files done, and left Flashlight.luau a stub). One pass aimed at those.
-            done = [p for p in item["files"] if p not in unbuilt]
-            nudge = (f"These files of yours are still the harness placeholder, so their part of the item does not "
-                     f"exist in the game: {', '.join(unbuilt)}. Write them now: complete, working code for their part "
-                     f"of the brief. {', '.join(done)} {'is' if len(done) == 1 else 'are'} already written (the "
-                     "content above is from before you started; read_file shows it now): change them only where the "
-                     "new files need it. Then submit.")
-            again = brief + "\n\n" + nudge if isinstance(brief, str) else brief + [text_part(nudge)]
-            more = await self.wf.agent(again, role="builder", system=system, tools=self.builder_tools(item),
-                                       schema=schemas.REPORT, label=label + "-finish", max_steps=self.cfg.builder_steps)
+            # Movement.luau, reported both files done, and left Flashlight.luau a stub).
+            more = await self.finish_stubs(item, label, system)
             rep = more if isinstance(more, dict) else rep
         await self.gate(item, label)
+        return rep if isinstance(rep, dict) else None
+
+    def unbuilt(self, item: dict) -> list[str]:
+        """An item's files that are still harness placeholders, entry scripts first (nothing runs without them)."""
+        missing = [p for p, src in self.owned_sources(item).items() if not src.strip() or STUB_MARK in src]
+        return sorted(missing, key=lambda p: (not p.endswith((".server.luau", ".client.luau")), item["files"].index(p)))
+
+    async def finish_stubs(self, item: dict, label: str, system: str) -> dict | None:
+        """One pass that may write only the files still missing, from a brief that lists them (entry scripts first)
+        instead of the whole item again. Live, a finishing pass given the full brief spent its 28 steps improving
+        finished modules and never wrote the client entry script, so the game's client never started."""
+        missing = self.unbuilt(item)
+        if not missing:
+            return None
+        written = {p: src.count("\n") + 1 for p, src in self.owned_sources(item).items() if p not in missing}
+        brief = prompts.finish_brief(item, self.plan, self.style_md, self.arch, missing, written)
+        rep = await self.wf.agent(brief, role="builder", system=system, tools=self.builder_tools(item, set(missing)),
+                                  schema=schemas.REPORT, label=label + "-finish", max_steps=self.cfg.builder_steps)
+        left = self.unbuilt(item)
+        self.wf.log(f"{item['id']}: finishing pass wrote {len(missing) - len(left)} of {len(missing)} missing file(s)"
+                    + (f"; still missing: {', '.join(left)}" if left else ""))
         return rep if isinstance(rep, dict) else None
 
     async def gate(self, item: dict, label: str) -> bool:
@@ -838,15 +858,21 @@ class Build:
     async def item(self, item: dict) -> dict:
         wf = self.wf
         # Item-level resume: a build call's prompt carries the item's current code, so once a build has written its
-        # files the journal can never replay it. Skip the build when the recorded files are exactly what is on disk.
+        # files the journal can never replay it. An item that was built (its build reported) is never rebuilt: that
+        # would redo what works, and later fixes (Studio rounds, gates) change its files on purpose. Files it left
+        # as placeholders get a finishing pass; gates added since still apply.
         done = self._built_state().get(item["id"])
         current = {p: _digest(s) for p, s in self.owned_sources(item).items()}
-        if done and done.get("digests") == current and not any(
-                STUB_MARK in s for s in self.owned_sources(item).values()):
-            wf.log(f"{item['id']}: already built (files unchanged); skipping the build agent")
+        if done:
             rep = done.get("report")
-            # Gates added after it was built still apply; record the fixed files so the next resume skips it too.
-            if await self.gate(item, f"gate:{item['id']}"):
+            missing = self.unbuilt(item)
+            if missing:
+                wf.log(f"{item['id']}: built before; {len(missing)} file(s) still placeholders, finishing only those")
+                more = await self.finish_stubs(item, f"build:{item['id']}", prompts.BUILDER_SYSTEM)
+                rep = more if isinstance(more, dict) else rep
+            else:
+                wf.log(f"{item['id']}: already built; skipping the build agent")
+            if await self.gate(item, f"gate:{item['id']}") or missing or done.get("digests") != current:
                 self._mark_built(item, rep)
         else:
             brief = prompts.item_brief(item, self.plan, self.style_md, self.arch, self.owned_sources(item),
