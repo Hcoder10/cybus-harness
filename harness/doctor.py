@@ -72,8 +72,13 @@ async def main_async(args) -> int:
     need.append(_ok("luau-analyze", analyzer() is not None, analyzer() or "missing: set HARNESS_LUAU_ANALYZE"))
     need.append(_ok("ffmpeg", bool(shutil.which("ffmpeg")), shutil.which("ffmpeg") or "missing: strips fall back to "
                                                                                        "timed screenshots"))
-    rojo = shutil.which("rojo") or (str(Path.home() / "bin" / "rojo.exe") if (Path.home() / "bin" / "rojo.exe").exists() else None)
+    from harness.place import rojo_exe
+    rojo = rojo_exe()
     _ok("rojo", bool(rojo), rojo or "missing: the place template is written by hand instead")
+    from harness.tools import typecheck
+    _ok("luau-lsp", typecheck.available(), f"{typecheck.lsp_exe()} with {typecheck.defs_path()}" if typecheck.available()
+        else "missing: Roblox API misuse (bad properties, enum items, classes) is only found in Studio; set "
+             "HARNESS_LUAU_LSP and HARNESS_ROBLOX_DEFS")
     free_gb = shutil.disk_usage(Path(args.run_root).anchor or ".").free / 1e9
     need.append(_ok("disk", free_gb > 3, f"{free_gb:.1f} GB free on {Path(args.run_root).anchor} (a build writes "
                                          "~0.2-0.5 GB of captures and logs)"))

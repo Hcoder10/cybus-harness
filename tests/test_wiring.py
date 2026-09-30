@@ -114,7 +114,7 @@ class MiswiredLLM(FakeLLM):
                      ToolCall("w1", "write_file", {"path": "ReplicatedStorage/Shared/Config.luau",
                                                    "content": "local M = {}\nreturn M\n"})]
             return LLMResponse(Message("assistant", "", tool_calls=calls), {}, "tool_calls", {})
-        if "write_file" in names and not wrote and task.startswith("These requires in your files do not reach"):
+        if "write_file" in names and not wrote and task.startswith("These lines in your files fail when they run"):
             self.gate_briefs.append(task)
             body = ('local RS = game:GetService("ReplicatedStorage")\n'
                     'local Config = require(RS:WaitForChild("Shared"):WaitForChild("Config"))\nprint(Config)\n')
@@ -137,13 +137,13 @@ def test_build_gate_sends_wiring_problems_back_and_moves_orphan_stubs(tmp_path: 
     assert "ServerScriptService.Config, which does not exist" in fake.gate_briefs[0]
     assert "ReplicatedStorage.Shared.Config  <- ReplicatedStorage/Shared/Config.luau" in fake.gate_briefs[0]
     assert 'WaitForChild("Shared")' in ws.read("ServerScriptService/Game.server.luau")
-    assert report["wiring_problems"] == {} and report["stubs_left"] == []
+    assert report["runtime_problems"] == {} and report["stubs_left"] == []
     assert (tmp_path / "orphans" / "ServerScriptService" / "Old" / "Leftover.server.luau").exists()
     assert "ServerScriptService/Old/Leftover.server.luau" not in ws.files()
     assert "ServerScriptService/Keep.server.luau" in ws.files()          # real code is never moved
     labels = [json.loads(line).get("label") for line in
               (tmp_path / "journal.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
-    assert "build:core-wiring" in labels
+    assert "build:core-runtime" in labels
 
 
 class HalfDoneLLM(FakeLLM):

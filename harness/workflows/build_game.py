@@ -39,6 +39,7 @@ from harness.tools.base import Tool, ToolResult
 from harness.tools.capture import contact_sheet
 from harness.tools.imagegen import KIND_HINTS
 from harness.tools.luau import check_sources, syntax_errors
+from harness.tools.typecheck import api_problems
 from harness.tools.workspace import parse_rel
 from harness.wiring import module_listing, wiring_problems
 
@@ -322,6 +323,15 @@ class Build:
         spec = cls.TOOL_ASPECTS.get(tool_name)
         return spec is None or aspect in prompts.SPEC_PLAYBOOKS.get(spec, set())
 
+    async def runtime_problems(self, paths: list[str]) -> dict[str, list[str]]:
+        """Errors these files will hit when they run, found without Studio: requires that cannot reach a module
+        (harness.wiring) and Roblox API misuse (harness.tools.typecheck). Only paths with problems appear."""
+        srcs = {p: self.ws.read(p) for p in paths if (self.ws.src / p).exists()}
+        out = {p: ["WIRING " + x for x in v] for p, v in wiring_problems(self.ws.files(), srcs).items()}
+        for p, v in (await api_problems(self.ws.root, list(srcs))).items():
+            out.setdefault(p, []).extend("API " + x for x in v)
+        return out
+
     def builder_tools(self, item: dict) -> list[Tool]:
         owned = set(item["files"])
         ws = self
@@ -338,10 +348,10 @@ class Build:
             return p
 
         async def problems(sources: dict[str, str]) -> dict[str, list[str]]:
-            """Syntax and lint problems, then requires that cannot reach a module (checked against the whole tree)."""
+            """Syntax and lint problems, then the runtime errors the code will hit (wiring, Roblox API misuse)."""
             out = await check_sources(sources)
-            for p, probs in wiring_problems(ws.ws.files(), sources).items():
-                out.setdefault(p, []).extend("WIRING " + x for x in probs)
+            for p, probs in (await ws.runtime_problems(list(sources))).items():
+                out.setdefault(p, []).extend(probs)
             return out
 
         async def write_file(path: str, content: str) -> ToolResult:
@@ -707,23 +717,31 @@ class Build:
                    "with check_code, then submit.")
             await self.wf.agent(fix, role="builder", system=prompts.FIXER_SYSTEM, tools=self.builder_tools(item),
                                 schema=schemas.REPORT, label=f"{label}-syntax{attempt}", max_steps=12)
-        # Wiring: requires that cannot reach a module stop their script at that line (live: a server entry script
-        # required its modules from the wrong folder, and a reveal asked WaitForChild for "Kit.Maid").
-        wiring = wiring_problems(self.ws.files(), self.owned_sources(item))
-        if wiring:
-            n = sum(map(len, wiring.values()))
-            listing = "\n".join(f"{p}:\n  " + "\n  ".join(v[:12]) for p, v in wiring.items())
-            names = {m for v in wiring.values() for x in v for m in re.findall(r'"([A-Za-z_][\w.]*)"', x)}
-            fix = ("These requires in your files do not reach a real module, so each script stops at that line "
-                   "(WaitForChild waits forever, or returns nil and require errors; inside a pcall the module is "
-                   f"silently missing):\n{listing}\n\nWHERE EVERY MODULE LIVES (instance path <- file)\n"
-                   f"{module_listing(self.ws.files(), names)[:5000]}\n\nFix exactly these requires with edit_file so "
-                   "each walks to the real module one name at a time (read the lines around each first). Keep "
-                   "everything else as it is, run check_code until it reports no WIRING problems, then submit.")
+        # Runtime errors found without Studio. Wiring: a require that cannot reach its module stops the script there
+        # (live: a server entry script required its modules from the wrong folder; a reveal asked WaitForChild for
+        # "Kit.Maid"). API: Roblox has no such property, enum item or class (live: beam.A, Enum.FontWeight.Normal,
+        # Instance.new("Fog"), task.delay(fn)), or a module has no such function.
+        runtime = await self.runtime_problems(item["files"])
+        if runtime:
+            n = sum(map(len, runtime.values()))
+            listing = "\n".join(f"{p}:\n  " + "\n  ".join(v[:16]) for p, v in runtime.items())
+            wiring = [x for v in runtime.values() for x in v if x.startswith("WIRING")]
+            modules = ""
+            if wiring:
+                names = {m for x in wiring for m in re.findall(r'"([A-Za-z_][\w.]*)"', x)}
+                modules = ("\n\nWHERE EVERY MODULE LIVES (instance path <- file)\n"
+                           + module_listing(self.ws.files(), names)[:5000])
+            fix = ("These lines in your files fail when they run. A require that cannot reach its module (WIRING) "
+                   "stops its script at that line: WaitForChild waits forever, or returns nil and require errors, and "
+                   "inside a pcall the module is silently missing. A property, enum item, class or function that does "
+                   f"not exist (API) errors on that line:\n{listing}{modules}\n\nFix exactly these lines with edit_file "
+                   "(read the lines around each first): walk to modules one name at a time, and use the real Roblox "
+                   "names listed. Keep everything else as it is, run check_code until it reports no WIRING or API "
+                   "problems, then submit.")
             await self.wf.agent(fix, role="builder", system=prompts.FIXER_SYSTEM, tools=self.builder_tools(item),
-                                schema=schemas.REPORT, label=f"{label}-wiring", max_steps=14)
-            left = sum(map(len, wiring_problems(self.ws.files(), self.owned_sources(item)).values()))
-            self.wf.log(f"{item['id']}: {n} wiring problem(s), {left} left after the fix")
+                                schema=schemas.REPORT, label=f"{label}-runtime", max_steps=16)
+            left = sum(map(len, (await self.runtime_problems(item["files"])).values()))
+            self.wf.log(f"{item['id']}: {n} runtime problem(s) ({len(wiring)} wiring), {left} left after the fix")
         return before != {p: _digest(s) for p, s in self.owned_sources(item).items()}
 
     async def see(self, item: dict, label: str):
@@ -1026,13 +1044,13 @@ class Build:
         for r in final.values():
             by_aspect.setdefault(r["aspect"], []).append(r["score"])
         files = self.ws.files()
-        wiring = wiring_problems(files, {p: self.ws.read(p) for p in files if not p.startswith("ReplicatedStorage/Kit/")})
+        runtime = await self.runtime_problems([p for p in files if not p.startswith("ReplicatedStorage/Kit/")])
         stubs = [p for p in files if STUB_MARK in self.ws.read(p)]
         report = {"title": self.plan.get("title"), "seconds": round(time.time() - t0),
                   "items": final, "aspects": {a: round(sum(v) / len(v), 2) for a, v in by_aspect.items()},
-                  "wiring_problems": wiring, "stubs_left": stubs, "run_dir": str(self.run_dir)}
-        if wiring or stubs:
-            self.wf.log(f"report: {sum(map(len, wiring.values()))} wiring problem(s), {len(stubs)} stub(s) left")
+                  "runtime_problems": runtime, "stubs_left": stubs, "run_dir": str(self.run_dir)}
+        if runtime or stubs:
+            self.wf.log(f"report: {sum(map(len, runtime.values()))} runtime problem(s), {len(stubs)} stub(s) left")
         self.save("report.json", report)
         return report
 
