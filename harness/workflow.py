@@ -201,7 +201,8 @@ class Workflow:
         usage = dict(res.usage or {})
         self._add_usage(usage)
         self._write_transcript(ordinal, name, {**meta, "seconds": seconds, "stopped": res.stopped, "steps": res.steps,
-                                               "usage": usage, "result": result, "messages": res.transcript})
+                                               "error": getattr(res, "error", None), "usage": usage, "result": result,
+                                               "messages": res.transcript})
         # The agent loop reports model/API failures as stopped == "error" rather than raising.
         if res.stopped == "error" or result is None:
             why = getattr(res, "error", None) or ("no structured result" if result is None else "error")
