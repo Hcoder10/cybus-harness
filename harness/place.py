@@ -93,8 +93,11 @@ def rojo_exe() -> str | None:
     found = shutil.which("rojo")
     if found:
         return found
-    home = Path.home() / "bin" / "rojo.exe"
-    return str(home) if home.exists() else None
+    for name in ("rojo.exe", "rojo"):            # ~/bin/rojo is where the Linux build box keeps it
+        home = Path.home() / "bin" / name
+        if home.is_file():
+            return str(home)
+    return None
 
 
 def build_place(workspace_root: Path, out: Path, name: str, run_id: str | None = None,
