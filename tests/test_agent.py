@@ -319,3 +319,32 @@ def test_agent_executes_text_tool_calls_from_a_real_client():
     assert assistant["content"] == "Reading it." and assistant["tool_calls"][0]["function"]["name"] == "read_file"
     assert result == {"role": "tool", "content": "-- a.luau\nlocal x = 1",
                       "tool_call_id": assistant["tool_calls"][0]["id"]}
+
+
+def test_out_of_steps_gets_a_submit_only_turn():
+    """A run that uses every step without submitting is offered submit as the only tool before it is failed."""
+    import asyncio as _asyncio
+    from harness.agent import Agent as _Agent
+    from harness.llm import LLMResponse as _R, Message as _M, ToolCall as _TC
+    from harness.tools.base import Tool as _Tool, ToolResult as _TR
+
+    class Stubborn:
+        def __init__(self):
+            self.offered = []
+
+        async def chat(self, messages, tools=None):
+            names = [t["function"]["name"] for t in tools or []]
+            self.offered.append(names)
+            if names == ["submit"]:
+                return _R(_M("assistant", "", tool_calls=[_TC("s", "submit", {"summary": "done"})]), {}, "tool_calls", {})
+            return _R(_M("assistant", "", tool_calls=[_TC(f"c{len(self.offered)}", "poke", {})]), {}, "tool_calls", {})
+
+    async def poke():
+        return _TR(text="poked")
+
+    llm = Stubborn()
+    agent = _Agent(llm, "sys", [_Tool("poke", "poke", {"type": "object", "properties": {}}, poke)], max_steps=3)
+    res = _asyncio.run(agent.run("task", schema={"type": "object", "properties": {"summary": {"type": "string"}},
+                                                 "required": ["summary"]}))
+    assert res.stopped == "submitted" and res.structured == {"summary": "done"}
+    assert llm.offered[-1] == ["submit"] and len(llm.offered) == 4

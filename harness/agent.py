@@ -27,6 +27,8 @@ SUBMIT = "submit"
 _NO_SUBMIT = ("You ended your turn without calling `submit`. If you are done, call the `submit` tool now with "
               "your final answer as its arguments; otherwise keep working with the tools.")
 _LAST_STEP = "You have one step left: call `submit` now with your best answer."
+_FORCED_SUBMIT = ("You are out of steps and no other tool is available now. Call `submit` with your report of what "
+                  "you have done so far (what works, what is unfinished).")
 
 
 @dataclass
@@ -160,6 +162,27 @@ class Agent:
             for o in outcomes:
                 if o.submitted:
                     return finish("submitted", o.value)
+        if submit is not None:
+            # Out of steps without a report (live: a builder finished a 691-line file, verified it clean, kept
+            # polishing, then ran check_code on its last step). Offer submit as the ONLY tool, twice at most, so the
+            # finished work is recorded instead of the run counting as failed and being redone on resume.
+            for _ in range(2):
+                add(Message("user", _FORCED_SUBMIT))
+                self._fit_budget(context, summarized)
+                try:
+                    response = await self.llm.chat(context, [submit.spec])
+                except Exception as e:  # noqa: BLE001
+                    log.warning("[%s] forced submit failed: %s: %s", self.name, type(e).__name__, e)
+                    break
+                _add_usage(usage, response.usage)
+                add(response.message)
+                calls = [c for c in (response.message.tool_calls or []) if c.name == SUBMIT]
+                if not calls:
+                    continue
+                outcomes = await self._run_calls(calls[:1], {}, submit)
+                self._add_results(outcomes, add)
+                if outcomes and outcomes[0].submitted:
+                    return finish("submitted", outcomes[0].value)
         return finish("max_steps")
 
     # -- tools -------------------------------------------------------------------------------------
