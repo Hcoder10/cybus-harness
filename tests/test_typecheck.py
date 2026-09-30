@@ -88,7 +88,8 @@ def test_only_certain_runtime_errors_are_kept():
     assigned = c("Expected this to be 'Attachment?', but got 'Vector3'", "Rod.Line.Attachment0 = tipPos")
     assert "Attachment0 takes a Attachment, and this assigns a Vector3" in assigned
     assert c("Expected this to be 'Attachment?', but got 'Vector3'", "local a: Attachment? = tipPos") is None
-    assert c("Expected this to be 'boolean', but got 'number'", "beam.Enabled = 1") is None     # not declared so
+    assert "Enabled takes a boolean" in c("Expected this to be 'boolean', but got 'number'", "beam.Enabled = 1")
+    assert c("Expected this to be 'boolean', but got 'number'", "state.glowing = 1") is None   # not a Roblox property
     prec = tc.classify("not X > Y is equivalent to (not X) > Y; add parentheses to silence", "if not a > 0.9 then",
                        d, names, "ComparisonPrecedence")
     assert "binds tighter than the comparison" in prec
