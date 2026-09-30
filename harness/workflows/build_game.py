@@ -239,6 +239,10 @@ class Build:
         # Revision rounds apply a given list of changes: thinking adds little and can run away (Qwen3.8 spent a whole
         # 16k budget thinking, three times, on a style revision). They use the 'reviser' role when it is configured.
         self.reviser = "reviser" if "reviser" in getattr(wf, "roles", {}) else "lead"
+        # The architecture is the largest structured answer (files, remotes, commands, a dozen briefed items). With
+        # thinking on, Qwen3.8 spent six 16k-token replies thinking without submitting; it gets its own role
+        # (configure it without thinking and with a larger completion budget).
+        self.architect = "architect" if "architect" in getattr(wf, "roles", {}) else "lead"
 
     # ------------------------------------------------------------------ helpers
     def save(self, name: str, obj: Any) -> None:
@@ -499,7 +503,7 @@ class Build:
     async def arch_phase(self) -> None:
         wf = self.wf
         wf.phase("Architect")
-        arch = await wf.agent(prompts.arch_brief(self.plan, self.style_md, KIT_API), role="lead",
+        arch = await wf.agent(prompts.arch_brief(self.plan, self.style_md, KIT_API), role=self.architect,
                               system=prompts.LEAD_SYSTEM, schema=schemas.ARCH, label="architecture")
         if not isinstance(arch, dict):
             raise RuntimeError("the lead produced no architecture")
@@ -877,7 +881,7 @@ async def run_build(idea: dict, run_dir: Path, *, cfg: BuildConfig | None = None
     from harness.tools.workspace import Workspace
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
-    roles = {r: llm_from_env(r) for r in ("lead", "art", "builder", "critic", "judge", "reviser")}
+    roles = {r: llm_from_env(r) for r in ("lead", "art", "builder", "critic", "judge", "reviser", "architect")}
     wf = Workflow(f"build_game:{idea.get('id', 'game')}", run_dir, roles, resume=resume)
     ws = Workspace(run_dir / "workspace")
     run_id = re.sub(r"[^a-z0-9_]+", "_", f"{idea.get('id', 'game')}_{run_dir.name}".lower())
