@@ -118,6 +118,20 @@ class Defs:
             cls = base
         return out
 
+    def subclass_members(self, cls: str) -> set[str]:
+        """Members only some subclass has: a value typed GuiObject may really be an ImageLabel."""
+        kids: dict[str, list[str]] = {}
+        for name, (base, _) in self.classes.items():
+            if base:
+                kids.setdefault(base, []).append(name)
+        out: set[str] = set()
+        todo = list(kids.get(cls, []))
+        while todo:
+            c = todo.pop()
+            out |= self.classes[c][1]
+            todo += kids.get(c, [])
+        return out
+
 
 @lru_cache(maxsize=4)
 def load_defs(path: str) -> Defs:
@@ -127,7 +141,7 @@ def load_defs(path: str) -> Defs:
 def sourcemap(files: list[str], name: str = "Game") -> dict:
     """A rojo-style sourcemap for the workspace's files (paths relative to the workspace root)."""
     root = {"name": name, "className": "DataModel", "children": []}
-    index: dict[tuple, dict] = {(): root}
+    folders: dict[tuple, dict] = {(): root}    # scripts never hold children: Hud.client.luau and Hud/ are siblings
     for rel in sorted(files):
         try:
             info = parse_rel(rel)
@@ -136,20 +150,16 @@ def sourcemap(files: list[str], name: str = "Game") -> dict:
         node = (info.service, *info.folders, info.name)
         for i in range(1, len(node)):
             key = node[:i]
-            if key not in index:
+            if key not in folders:
                 cls = key[-1] if i == 1 and (key[-1] in SERVICES or key[-1] in _OPEN_SERVICES) else "Folder"
                 if key == ("StarterPlayer", "StarterPlayerScripts"):
                     cls = "StarterPlayerScripts"
                 elif key == ("StarterPlayer", "StarterCharacterScripts"):
                     cls = "StarterCharacterScripts"
-                index[key] = {"name": key[-1], "className": cls, "children": []}
-                index[key[:-1]]["children"].append(index[key])
-        leaf = {"name": info.name, "className": info.class_name, "filePaths": [f"src/{info.rel}"]}
-        if node in index:                      # a folder of the same name came first: keep both as Roblox would
-            index[node[:-1]]["children"].append(leaf)
-        else:
-            index[node] = leaf
-            index[node[:-1]]["children"].append(leaf)
+                folders[key] = {"name": key[-1], "className": cls, "children": []}
+                folders[key[:-1]]["children"].append(folders[key])
+        folders[node[:-1]]["children"].append(
+            {"name": info.name, "className": info.class_name, "filePaths": [f"src/{info.rel}"]})
     return root
 
 
@@ -181,6 +191,10 @@ def classify(msg: str, src_line: str, defs: Defs, names: set[str]) -> str | None
         members = defs.members(typ)
         if not members:
             return None
+        # A base-class type (GuiObject, BasePart, Light, ...) may hold a subclass that has the key. Part is the
+        # exception: a Part-typed value comes from Instance.new("Part"), not from a SpawnLocation.
+        if typ != "Part" and key in defs.subclass_members(typ):
+            return None
         close = _close_matches(key, members)
         return (f"{typ} has no property or method '{key}', so this line errors."
                 + (f" Did you mean: {', '.join(close)}?" if close else ""))
@@ -195,10 +209,12 @@ def classify(msg: str, src_line: str, defs: Defs, names: set[str]) -> str | None
         return (f"Instance.new(\"{m.group(1)}\") errors: Roblox has no class '{m.group(1)}'."
                 + (f" Did you mean: {', '.join(close)}?" if close else ""))
     m = re.match(r"^Key '(\w+)' not found in table '([^']*)'", msg)
-    if m and re.search(rf"[.:]\s*{re.escape(m.group(1))}\s*\(", src_line):
-        key, table = m.groups()
-        what = table if re.fullmatch(r"\w+", table) and table not in ("M", "self") else "that module or table"
-        guarded = re.search(rf"[.:]\s*{re.escape(key)}\s+and\b", src_line)
+    # Only `Module.fn(...)` on a capitalised module or library name: method calls on objects (`self.track:Sample()`)
+    # go through metatables the checker cannot always follow.
+    call = m and re.search(rf"\b([A-Z]\w*)\s*\.\s*{re.escape(m.group(1))}\s*\(", src_line)
+    if m and call:
+        key, what = m.group(1), call.group(1)
+        guarded = re.search(rf"\.\s*{re.escape(key)}\s+and\b", src_line)
         return (f"calls '{key}', which {what} does not define: "
                 + ("the guard makes this line silently do nothing, so the feature never happens. "
                    if guarded else "this line errors (attempt to call a nil value). ")

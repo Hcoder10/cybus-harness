@@ -22,6 +22,22 @@ declare extern type Beam extends Instance with
 	Enabled: boolean
 end
 
+declare extern type GuiObject extends Instance with
+	Visible: boolean
+end
+
+declare extern type ImageLabel extends GuiObject with
+	ImageColor3: Color3
+end
+
+declare extern type Part extends Instance with
+	Anchored: boolean
+end
+
+declare extern type SpawnLocation extends Part with
+	Enabled: boolean
+end
+
 declare extern type EnumFontWeight extends EnumItem with end
 declare extern type EnumFontWeight_INTERNAL extends Enum with
 	Bold: EnumFontWeight
@@ -60,6 +76,9 @@ def test_only_certain_runtime_errors_are_kept():
     assert "silently do nothing" in c("Key 'bobberPosition' not found in table 'M'",
                                       "return World.bobberPosition and World.bobberPosition()")
     assert c("Key 'speed' not found in table 'Config'", "local s = Config.speed") is None   # a read, not a call
+    assert c("Key 'Sample' not found in table '{ track: T }'", "local s = self.track:Sample(1)") is None   # a method
+    assert c("Key 'ImageColor3' not found in external type 'GuiObject'") is None   # may really be an ImageLabel
+    assert "Part has no property or method 'Enabled'" in c("Key 'Enabled' not found in external type 'Part'")
     assert "task.delay needs 2" in c("Argument count mismatch. Function 'task.delay' expects 2 arguments, but only 1 "
                                      "is specified")
     assert c("Argument count mismatch. Function 'stroke' expects 4 arguments, but only 3 are specified") is None
@@ -76,6 +95,10 @@ def test_sourcemap_mirrors_the_workspace():
     assert maid == {"name": "Maid", "className": "ModuleScript", "filePaths": ["src/ReplicatedStorage/Kit/Maid.luau"]}
     sps = kids["StarterPlayer"]["children"][0]
     assert sps["className"] == "StarterPlayerScripts" and sps["children"][0]["className"] == "LocalScript"
+    both = tc.sourcemap(["StarterPlayer/StarterPlayerScripts/Hud.client.luau",
+                         "StarterPlayer/StarterPlayerScripts/Hud/Widgets.client.luau"])
+    hud = both["children"][0]["children"][0]["children"]          # a script and a folder of the same name
+    assert sorted(h["className"] for h in hud) == ["Folder", "LocalScript"]
 
 
 @pytest.mark.skipif(not (tc.lsp_exe() and tc.defs_path()), reason="luau-lsp or Roblox definitions not installed")
