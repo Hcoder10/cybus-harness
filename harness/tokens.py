@@ -189,6 +189,10 @@ def build_tokens(style: dict) -> tuple[str, list[str]]:
             "\treturn Font.new(\"rbxasset://fonts/families/\" .. name .. \".json\", w)",
             "end", "", "Tokens.font = {"]
     out += [f"\t{role} = font({_lua_str(fam)}, {_lua_str(w)})," for role, (fam, w) in fonts.items()]
+    # Tokens.font.X is a Font (assign to FontFace); Tokens.family.X is its family string for Font.new(family, weight)
+    # (a live builder wrote Font.new(Tokens.font.heading, ...), which errors at runtime: Font.new wants a string).
+    out += ["}", "", "Tokens.family = {"]
+    out += [f"\t{role} = Tokens.font.{role}.Family," for role in fonts]
     out += ["}", "", "Tokens.size = {"]
     out += [f"\t{k} = {v:g}," for k, v in sizes.items()]
     out += ["}", "", "Tokens.space = { s1 = 4, s2 = 8, s3 = 12, s4 = 16, s5 = 24, s6 = 32, s7 = 48, s8 = 64 }", "",

@@ -56,7 +56,8 @@ KIT_API = """ReplicatedStorage.Kit (require these; never copy or edit them):
 - FxMath: CameraRig's and VFX's pure-Luau math (ease, springStep, keypoints, validateEffect); you rarely need it directly
 - Debug.register(name, fn, description) (client or server): a command the test harness can run in Studio to show
   your screen / trigger your moment; Debug.event(name, data): log a gameplay event for playtests.
-ReplicatedStorage.Shared.Tokens: Tokens.color.<role>, Tokens.font.<display|heading|body|numeric>, Tokens.size.<display|h1|h2|body|caption|numeric>,
+ReplicatedStorage.Shared.Tokens: Tokens.color.<role>, Tokens.font.<display|heading|body|numeric> (a Font: label.FontFace =
+  Tokens.font.body; another weight: Font.new(Tokens.family.body, Enum.FontWeight.Bold)), Tokens.size.<display|h1|h2|body|caption|numeric>,
   Tokens.space.s1..s8 (4..64), Tokens.radius.<small|medium|large> (UDim), Tokens.stroke, Tokens.motion.<fast|base|slow|dramatic>,
   Tokens.tween(kind) -> TweenInfo, Tokens.lighting.
 """

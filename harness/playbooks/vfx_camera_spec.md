@@ -17,7 +17,7 @@ naming your script, and a default is used.
   `lightInfluence`, `brightness`, `drag`, `acceleration` (Vector3), `orientation` (facing, facingUp, parallel,
   perpendicular), `direction` (up, down, forward, back, left, right), `zoffset`, `texture`, `flipbook` {layout
   "4x4", mode, fps, random}, `shape` {kind sphere/box/disc/cylinder, size, style, inOut, partial}, `lockedToPart`.
-- `beam`: `to` (Vector3 offset, part or attachment), `from`, `width` ({start, end}), `color`, `transparency`,
+- `beam`: `to` (Vector3 offset, part or attachment), `from`, `width` ({w0, w1}: two numbers, start and end width, e.g. `width = {0.3, 0.05}`; never `{start=, end=}`: `end` is a Luau keyword), `color`, `transparency`,
   `curve` (bows toward up), `texture`, `textureSpeed`, `textureLength`, `textureMode`, `segments`, `faceCamera`,
   `lightEmission`, `brightness`, `duration`, `fadeOut`.
 - `light`: `color`, `brightness`, `range` (max 60), `duration`, `attack`, `shadows`, `spot` {angle, face}.

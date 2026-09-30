@@ -37,7 +37,7 @@ from harness.tokens import build_tokens, lighting_script
 from harness.tools.base import Tool, ToolResult
 from harness.tools.capture import contact_sheet
 from harness.tools.imagegen import KIND_HINTS
-from harness.tools.luau import check_sources
+from harness.tools.luau import check_sources, syntax_errors
 from harness.tools.workspace import parse_rel
 
 log = logging.getLogger("harness.build_game")
@@ -589,6 +589,18 @@ class Build:
             again = brief + "\n\n" + nudge if isinstance(brief, str) else brief + [text_part(nudge)]
             rep = await self.wf.agent(again, role="builder", system=system, tools=self.builder_tools(item),
                                       schema=schemas.REPORT, label=label + "-retry", max_steps=self.cfg.builder_steps)
+        # Gate: a builder may submit with a file that no longer parses (live: `{start = 0.3, end = 0.05}`, where
+        # `end` is a keyword, took a whole VFX module down). Syntax errors go straight back for repair.
+        for attempt in range(2):
+            broken = syntax_errors(await check_sources(self.owned_sources(item)))
+            if not broken:
+                break
+            listing = "\n".join(f"{p}:\n  " + "\n  ".join(errs[:10]) for p, errs in broken.items())
+            fix = (f"Your files do not parse, so none of their code can run:\n{listing}\n\nFix exactly these syntax "
+                   "errors with edit_file (read the lines around each first), keep everything else as it is, check "
+                   "with check_code, then submit.")
+            await self.wf.agent(fix, role="builder", system=prompts.FIXER_SYSTEM, tools=self.builder_tools(item),
+                                schema=schemas.REPORT, label=f"{label}-syntax{attempt}", max_steps=12)
         return rep if isinstance(rep, dict) else None
 
     async def see(self, item: dict, label: str):
