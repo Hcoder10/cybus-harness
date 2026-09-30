@@ -684,6 +684,10 @@ class Build:
                     if (self.ws.src / old).exists() and not (self.ws.src / new).exists():
                         self.ws.write(new, self.ws.read(old))
                         (self.ws.src / old).unlink()
+                        parent = (self.ws.src / old).parent       # folders the move emptied would ship as Folders
+                        while parent != self.ws.src and parent.is_dir() and not any(parent.iterdir()):
+                            parent.rmdir()
+                            parent = parent.parent
                     wf.log(f"architecture: moved {old} to {new} (it could not run where it was)")
                 self.save("architecture.json", {"arch": self.arch, "notes": list(pinned.get("notes") or []) + [
                     f"moved {o} to {n}" for o, n in moves.items()]})

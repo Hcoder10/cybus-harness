@@ -483,5 +483,6 @@ def test_resume_moves_written_scripts_out_of_places_they_cannot_run(tmp_path: Pa
                 .run({"id": "harbour", "pitch": "x"}))
     good = "StarterPlayer/StarterPlayerScripts/Hud.client.luau"
     assert good in ws.files() and bad not in ws.files()
+    assert not (ws.src / "StarterPlayer" / "PlayerScripts").exists()          # the emptied folder went with it
     saved = json.loads((tmp_path / "architecture.json").read_text(encoding="utf-8"))
     assert saved["arch"]["items"][1]["files"] == [good] and any("moved" in n for n in saved["notes"])
