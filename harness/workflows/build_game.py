@@ -40,6 +40,7 @@ from harness.tools.capture import contact_sheet
 from harness.tools.imagegen import KIND_HINTS
 from harness.tools.luau import check_sources, syntax_errors
 from harness.tools.workspace import parse_rel
+from harness.wiring import module_listing, wiring_problems
 
 log = logging.getLogger("harness.build_game")
 
@@ -336,6 +337,13 @@ class Build:
                                       "files under 'requests' in your report.")
             return p
 
+        async def problems(sources: dict[str, str]) -> dict[str, list[str]]:
+            """Syntax and lint problems, then requires that cannot reach a module (checked against the whole tree)."""
+            out = await check_sources(sources)
+            for p, probs in wiring_problems(ws.ws.files(), sources).items():
+                out.setdefault(p, []).extend("WIRING " + x for x in probs)
+            return out
+
         async def write_file(path: str, content: str) -> ToolResult:
             try:
                 p = mine(path)
@@ -343,7 +351,7 @@ class Build:
                 return ToolResult(text=f"ERROR: {e}")
             ws.ws.write(p, content)
             reads["since_write"] = 0
-            probs = (await check_sources({p: content})).get(p, [])
+            probs = (await problems({p: content})).get(p, [])
             return ToolResult(text=f"wrote {p} ({content.count(chr(10)) + 1} lines)"
                               + ("\nPROBLEMS:\n" + "\n".join(probs[:12]) if probs else "\nno syntax errors"))
 
@@ -363,7 +371,7 @@ class Build:
             new_src = src.replace(old_text, new_text, 1)
             ws.ws.write(p, new_src)
             reads["since_write"] = 0
-            probs = (await check_sources({p: new_src})).get(p, [])
+            probs = (await problems({p: new_src})).get(p, [])
             return ToolResult(text=f"edited {p}" + ("\nPROBLEMS:\n" + "\n".join(probs[:12]) if probs else "\nno syntax errors"))
 
         async def read_file(path: str, start_line: int = 1, max_lines: int = 400) -> ToolResult:
@@ -398,7 +406,7 @@ class Build:
 
         async def check_code() -> ToolResult:
             srcs = {p: ws.ws.read(p) for p in owned if (ws.ws.src / p).exists()}
-            probs = await check_sources(srcs)
+            probs = await problems(srcs)
             if not probs:
                 return ToolResult(text="no problems found in your files")
             return ToolResult(text="\n".join(f"{p}:\n  " + "\n  ".join(v[:15]) for p, v in probs.items()))
@@ -418,7 +426,8 @@ class Build:
                                                             "start_line": {"type": "integer"},
                                                             "max_lines": {"type": "integer"}}}, read_file),
             Tool("list_files", "List every project file and who owns it.", {**s, "properties": {}}, list_files),
-            Tool("check_code", "Check your files for syntax errors and likely bugs.", {**s, "properties": {}}, check_code),
+            Tool("check_code", "Check your files for syntax errors, likely bugs, and requires that do not reach a real "
+                               "module.", {**s, "properties": {}}, check_code),
         ]
         tools += self.audio.tools() + [t for t in self.extra_tools if self.tool_fits(t.name, item["aspect"])]
         if self.imagegen is not None and self.imagegen.enabled and self.assets is not None:
@@ -598,6 +607,7 @@ class Build:
             p = f["path"]
             if not (self.ws.src / p).exists():
                 self.ws.write(p, stub_source(p, f.get("responsibility", ""), f.get("api", "")))
+        self.move_orphan_stubs()
         if self.stage is not None:
             async with self.stage.lock:
                 await self.stage.edit(lighting_script(self.style))
@@ -610,6 +620,30 @@ class Build:
             errs = [l for l in logs if l.get("kind") == "error"]
             self.wf.log(f"scaffold booted: {len(synced.get('pushed', []))} files pushed, {len(errs)} errors")
             self.save("scaffold_boot.json", {"sync": synced, "logs": logs})
+
+    def move_orphan_stubs(self) -> list[str]:
+        """Stubs no current file entry declares (live: a resumed run kept 36 from an earlier architecture). Nothing
+        owns them, builders read them, and the final place would ship them as empty scripts: move them to
+        run_dir/orphans. Only harness stubs move; real code stays where it is."""
+        declared = {f["path"] for f in self.arch.get("files", [])} | {parse_rel(p).rel for p in kit_files()} | HARNESS_OWNED
+        moved = []
+        for rel in self.ws.files():
+            if rel in declared:
+                continue
+            try:
+                src = self.ws.read(rel)
+            except OSError:
+                continue
+            if STUB_MARK not in src:
+                continue
+            dest = self.run_dir / "orphans" / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(src, encoding="utf-8")
+            (self.ws.src / rel).unlink()
+            moved.append(rel)
+        if moved:
+            self.wf.log(f"scaffold: moved {len(moved)} orphan stub(s) no file entry declares to orphans/")
+        return moved
 
     # ------------------------------------------------------------------ items
     async def build_items(self) -> None:
@@ -641,8 +675,15 @@ class Build:
             again = brief + "\n\n" + nudge if isinstance(brief, str) else brief + [text_part(nudge)]
             rep = await self.wf.agent(again, role="builder", system=system, tools=self.builder_tools(item),
                                       schema=schemas.REPORT, label=label + "-retry", max_steps=self.cfg.builder_steps)
-        # Gate: a builder may submit with a file that no longer parses (live: `{start = 0.3, end = 0.05}`, where
-        # `end` is a keyword, took a whole VFX module down). Syntax errors go straight back for repair.
+        await self.gate(item, label)
+        return rep if isinstance(rep, dict) else None
+
+    async def gate(self, item: dict, label: str) -> bool:
+        """Checks every build passes before anything runs it; failures go straight back to a fixer. Returns True
+        when a fixer changed the item's files."""
+        before = {p: _digest(s) for p, s in self.owned_sources(item).items()}
+        # Syntax: a builder may submit a file that no longer parses (live: `{start = 0.3, end = 0.05}`, where `end`
+        # is a keyword, took a whole VFX module down).
         for attempt in range(2):
             broken = syntax_errors(await check_sources(self.owned_sources(item)))
             if not broken:
@@ -653,7 +694,24 @@ class Build:
                    "with check_code, then submit.")
             await self.wf.agent(fix, role="builder", system=prompts.FIXER_SYSTEM, tools=self.builder_tools(item),
                                 schema=schemas.REPORT, label=f"{label}-syntax{attempt}", max_steps=12)
-        return rep if isinstance(rep, dict) else None
+        # Wiring: requires that cannot reach a module stop their script at that line (live: a server entry script
+        # required its modules from the wrong folder, and a reveal asked WaitForChild for "Kit.Maid").
+        wiring = wiring_problems(self.ws.files(), self.owned_sources(item))
+        if wiring:
+            n = sum(map(len, wiring.values()))
+            listing = "\n".join(f"{p}:\n  " + "\n  ".join(v[:12]) for p, v in wiring.items())
+            names = {m for v in wiring.values() for x in v for m in re.findall(r'"([A-Za-z_][\w.]*)"', x)}
+            fix = ("These requires in your files do not reach a real module, so each script stops at that line "
+                   "(WaitForChild waits forever, or returns nil and require errors; inside a pcall the module is "
+                   f"silently missing):\n{listing}\n\nWHERE EVERY MODULE LIVES (instance path <- file)\n"
+                   f"{module_listing(self.ws.files(), names)[:5000]}\n\nFix exactly these requires with edit_file so "
+                   "each walks to the real module one name at a time (read the lines around each first). Keep "
+                   "everything else as it is, run check_code until it reports no WIRING problems, then submit.")
+            await self.wf.agent(fix, role="builder", system=prompts.FIXER_SYSTEM, tools=self.builder_tools(item),
+                                schema=schemas.REPORT, label=f"{label}-wiring", max_steps=14)
+            left = sum(map(len, wiring_problems(self.ws.files(), self.owned_sources(item)).values()))
+            self.wf.log(f"{item['id']}: {n} wiring problem(s), {left} left after the fix")
+        return before != {p: _digest(s) for p, s in self.owned_sources(item).items()}
 
     async def see(self, item: dict, label: str):
         cap = item["capture"]
@@ -709,6 +767,9 @@ class Build:
                 STUB_MARK in s for s in self.owned_sources(item).values()):
             wf.log(f"{item['id']}: already built (files unchanged); skipping the build agent")
             rep = done.get("report")
+            # Gates added after it was built still apply; record the fixed files so the next resume skips it too.
+            if await self.gate(item, f"gate:{item['id']}"):
+                self._mark_built(item, rep)
         else:
             brief = prompts.item_brief(item, self.plan, self.style_md, self.arch, self.owned_sources(item),
                                        extra=("GENERATED ART SO FAR\n" + self.assets.listing()) if self.assets else "")
@@ -951,9 +1012,14 @@ class Build:
         by_aspect: dict[str, list[float]] = {}
         for r in final.values():
             by_aspect.setdefault(r["aspect"], []).append(r["score"])
+        files = self.ws.files()
+        wiring = wiring_problems(files, {p: self.ws.read(p) for p in files if not p.startswith("ReplicatedStorage/Kit/")})
+        stubs = [p for p in files if STUB_MARK in self.ws.read(p)]
         report = {"title": self.plan.get("title"), "seconds": round(time.time() - t0),
                   "items": final, "aspects": {a: round(sum(v) / len(v), 2) for a, v in by_aspect.items()},
-                  "run_dir": str(self.run_dir)}
+                  "wiring_problems": wiring, "stubs_left": stubs, "run_dir": str(self.run_dir)}
+        if wiring or stubs:
+            self.wf.log(f"report: {sum(map(len, wiring.values()))} wiring problem(s), {len(stubs)} stub(s) left")
         self.save("report.json", report)
         return report
 

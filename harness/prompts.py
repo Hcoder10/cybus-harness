@@ -204,7 +204,18 @@ def shared_context(plan: dict, style_md: str, arch: dict) -> str:
             f"KIT (already in the game)\n{KIT_API}\n\n"
             f"EVERY FILE IN THE GAME AND ITS API (edit only the ones listed as yours below; call the others)\n"
             f"{compact_json(files, 6000)}\n\n"
+            f"{PATHS_RULE}\n\n"
             f"REMOTES\n{compact_json(arch.get('remotes', []), 1500)}\n\n")
+
+
+PATHS_RULE = (
+    "WHERE FILES LIVE: a file's instance is its path without the suffix, '/' -> '.': "
+    "ServerScriptService/Systems/Economy.luau is ServerScriptService.Systems.Economy. Walk to a module one name at a "
+    "time: script.Parent:WaitForChild(\"Systems\"):WaitForChild(\"Economy\") from ServerScriptService/Main.server.luau, "
+    "or game:GetService(\"ServerScriptService\").Systems.Economy. WaitForChild takes ONE name, never a dotted path "
+    "like \"Kit.Maid\". Files under StarterPlayer/StarterPlayerScripts run from the player's PlayerScripts (their "
+    "script.Parent is PlayerScripts). Clients cannot see ServerScriptService or ServerStorage. check_code reports "
+    "requires that do not reach a real module.")
 
 
 def aspect_context(aspect: str, spec_limit: int = 12000) -> str:
