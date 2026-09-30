@@ -635,11 +635,33 @@ class Build:
         self.save(f"verdicts/{item['id']}.json", self.verdicts[item["id"]])
         return v
 
+    def _built_state(self) -> dict:
+        path = self.run_dir / "items_built.json"
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+
+    def _mark_built(self, item: dict, report: dict | None) -> None:
+        state = self._built_state()
+        state[item["id"]] = {"report": report, "digests": {p: _digest(s) for p, s in self.owned_sources(item).items()}}
+        self.save("items_built.json", state)
+
     async def item(self, item: dict) -> dict:
         wf = self.wf
-        brief = prompts.item_brief(item, self.plan, self.style_md, self.arch, self.owned_sources(item),
-                                   extra=("GENERATED ART SO FAR\n" + self.assets.listing()) if self.assets else "")
-        rep = await self.build_agent(item, brief, f"build:{item['id']}", prompts.BUILDER_SYSTEM)
+        # Item-level resume: a build call's prompt carries the item's current code, so once a build has written its
+        # files the journal can never replay it. Skip the build when the recorded files are exactly what is on disk.
+        done = self._built_state().get(item["id"])
+        current = {p: _digest(s) for p, s in self.owned_sources(item).items()}
+        if done and done.get("digests") == current and not any(
+                STUB_MARK in s for s in self.owned_sources(item).values()):
+            wf.log(f"{item['id']}: already built (files unchanged); skipping the build agent")
+            rep = done.get("report")
+        else:
+            brief = prompts.item_brief(item, self.plan, self.style_md, self.arch, self.owned_sources(item),
+                                       extra=("GENERATED ART SO FAR\n" + self.assets.listing()) if self.assets else "")
+            rep = await self.build_agent(item, brief, f"build:{item['id']}", prompts.BUILDER_SYSTEM)
+            self._mark_built(item, rep)
         if self.stage is None:
             return {"id": item["id"], "report": rep}
         verdict = None
