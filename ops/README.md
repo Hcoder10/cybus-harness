@@ -14,6 +14,10 @@ Studio. Paths and host names are theirs.
 | `rig_final_place.py` | rig WSL | builds a finished run's `place/final.rbxlx` with rojo (`~/bin/rojo`) |
 | `rig_many_status.sh`, `rig_wiring_all.sh` | rig WSL | one status line per run; wiring problems and stubs per run |
 | `studio_pass.ps1` | laptop | pulls a rig-built run, opens the tunnel and the bridge, runs the doctor, then the Studio pass with `--evidence` |
+| `rig_queue_b2.sh` | rig WSL `~/rig_queue_b2.sh` | the clean benchmark builds (pitch only), after the b1 queues finish |
+| `rig_restart_one.sh` | rig WSL | stops one run's build process (only that run) so it can resume on new code |
+| `rig_runtime_left.py`, `rig_api_scan.py` | rig WSL | runtime problems a report says are left; the API check over every run |
+| `rig_install_rojo.sh`, `rig_install_lsp.sh` | rig WSL | rojo 7.6.1 and luau-lsp 1.70.1 + Roblox definitions into `~/bin` |
 
 Long jobs on the rig run as elevated scheduled tasks (`schtasks ... /rl highest`): anything started over ssh dies
 with the ssh session. Stage scripts by file (scp or base64), never through nested quotes over ssh.
