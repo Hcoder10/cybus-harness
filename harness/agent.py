@@ -93,6 +93,7 @@ class Agent:
 
     keep_last_messages = 6   # never trimmed, and neither are the system prompt and the task
     keep_images = 2          # the newest captures survive image dropping
+    max_images = 6           # never send more images than this in one request (server limits, e.g. vLLM's 8)
     image_tokens = 1500      # budget cost of one image (about a 1280px frame on current VLMs)
     chars_per_token = 3.5
     max_submit_nudges = 2    # schema runs: how often to ask for `submit` when the model stops without it
@@ -277,6 +278,15 @@ class Agent:
           2. replace the oldest tool results with one-line summaries;
           3. shorten long string arguments of old tool calls (e.g. whole files given to a write tool).
         The system prompt, the task and the last `keep_last_messages` messages are never touched."""
+        # Servers cap images per request (vLLM: 8 by default); a builder painting textures gets one preview per call.
+        # Beyond `max_images`, the oldest images after the task are replaced with a note, whatever the token count.
+        images = [(i, j) for i in range(2, len(ctx)) for j, part in enumerate(_parts(ctx[i])) if _is_image(part)]
+        in_task = sum(1 for part in _parts(ctx[1]) if _is_image(part)) if len(ctx) > 1 else 0
+        excess = in_task + len(images) - self.max_images
+        for i, j in images[:max(0, excess)]:
+            parts = list(ctx[i].content)
+            parts[j] = text_part("[older image removed: request image limit]")
+            ctx[i] = replace(ctx[i], content=parts)
         sizes = [self._tokens(m) for m in ctx]
         total = sum(sizes)
         budget = self.context_budget_tokens

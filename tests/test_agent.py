@@ -348,3 +348,37 @@ def test_out_of_steps_gets_a_submit_only_turn():
                                                  "required": ["summary"]}))
     assert res.stopped == "submitted" and res.structured == {"summary": "done"}
     assert llm.offered[-1] == ["submit"] and len(llm.offered) == 4
+
+
+def test_images_are_capped_per_request():
+    """However small the images, no request carries more than max_images of them (vLLM rejects > 8)."""
+    import asyncio as _asyncio
+    import io as _io
+    from PIL import Image as _Image
+    from harness.agent import Agent as _Agent
+    from harness.llm import LLMResponse as _R, Message as _M, ToolCall as _TC
+    from harness.tools.base import Tool as _Tool, ToolResult as _TR
+
+    buf = _io.BytesIO()
+    _Image.new("RGB", (8, 8), (255, 0, 0)).save(buf, format="PNG")
+    png = buf.getvalue()
+
+    class Painter:
+        def __init__(self):
+            self.counts = []
+
+        async def chat(self, messages, tools=None):
+            n = sum(1 for m in messages if isinstance(m.content, list)
+                    for p in m.content if isinstance(p, dict) and p.get("type") == "image_url")
+            self.counts.append(n)
+            if len(self.counts) >= 12:
+                return _R(_M("assistant", "done"), {}, "stop", {})
+            return _R(_M("assistant", "", tool_calls=[_TC(f"c{len(self.counts)}", "paint", {})]), {}, "tool_calls", {})
+
+    async def paint():
+        return _TR(text="painted", images=[png])
+
+    llm = Painter()
+    _asyncio.run(_Agent(llm, "sys", [_Tool("paint", "paint", {"type": "object", "properties": {}}, paint)],
+                        max_steps=20).run("task"))
+    assert max(llm.counts) <= _Agent.max_images and llm.counts[-1] == _Agent.max_images
