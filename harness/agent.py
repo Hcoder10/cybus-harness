@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import logging
 import time
 from dataclasses import dataclass, replace
@@ -99,13 +100,17 @@ class Agent:
     max_submit_nudges = 2    # schema runs: how often to ask for `submit` when the model stops without it
 
     def __init__(self, llm: LLM, system: str, tools: list[Tool], name: str = "agent", max_steps: int = 40,
-                 max_tool_chars: int = 16000, context_budget_tokens: int = 32000):
+                 max_tool_chars: int = 16000, context_budget_tokens: int | None = None):
         self.llm = llm
         self.system = system
         self.tools = list(tools or [])
         self.name = name
         self.max_steps = max_steps
         self.max_tool_chars = max_tool_chars
+        # Size it to the model server's window minus the output budget (HARNESS_CONTEXT_BUDGET). Too small a budget
+        # makes trimming drop what an agent just read, and live builders then re-read the same files for 28 steps.
+        if context_budget_tokens is None:
+            context_budget_tokens = int(os.environ.get("HARNESS_CONTEXT_BUDGET", "32000"))
         self.context_budget_tokens = context_budget_tokens
         tools_by_name(self.tools)  # duplicate names fail here, not mid-run
 

@@ -327,6 +327,7 @@ class Build:
         # Cybus over-explores (measured before: a third of episodes staged no edit). Live, a track builder spent 28
         # steps reading files and ran out of steps. Reads in a row without a write earn a nudge in the tool result.
         reads = {"since_write": 0}
+        read_counts: dict[str, int] = {}
 
         def mine(path: str) -> str:
             p = _canon(path)
@@ -371,6 +372,13 @@ class Build:
                 lines = ws.ws.read(p).splitlines()
             except (OSError, ValueError) as e:
                 return ToolResult(text=f"ERROR: {e}")
+            key = f"{p}:{int(start_line)}"
+            read_counts[key] = read_counts.get(key, 0) + 1
+            if read_counts[key] >= 3 and p not in owned:
+                api = next((f.get("api", "") for f in ws.arch.get("files", []) if f.get("path") == p), "")
+                return ToolResult(text=f"You have already read {p} (from line {int(start_line)}) twice in this task. Do "
+                                       f"not read it again: its API is {api[:600] or 'in your brief'}. Write your own "
+                                       "files now with write_file / edit_file, calling that API.")
             a = max(1, int(start_line))
             chunk = lines[a - 1:a - 1 + int(max_lines)]
             body = "\n".join(f"{a + i:4d}| {l}" for i, l in enumerate(chunk))
