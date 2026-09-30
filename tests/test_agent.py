@@ -384,6 +384,28 @@ def test_images_are_capped_per_request():
     assert max(llm.counts) <= _Agent.max_images and llm.counts[-1] == _Agent.max_images
 
 
+def test_a_reply_cut_off_at_the_output_budget_is_explained_to_the_model():
+    class CutOff(StubLLM):
+        max_tokens = 64
+
+        async def chat(self, messages, tools=None):
+            r = await super().chat(messages, tools)
+            if len(self.sent) == 1:                      # the first reply fills the whole budget
+                r.usage["completion_tokens"] = 64
+            return r
+
+    async def write_file(path: str, content: str | None = None):
+        return "written" if content else "ERROR: no content"
+
+    llm = CutOff(say("", call("write_file", path="Hud.luau")), say("", call("write_file", path="Hud.luau", content="x")),
+                 say("done"))
+    run(Agent(llm, "SYSTEM", [tool("write_file", write_file, path={"type": "string"}, content={"type": "string"})]))
+    note = llm.sent[1][-1]
+    assert note.role == "user" and "used the whole output budget (64 tokens)" in note.content
+    assert "append_file" in note.content
+    assert sum("whole output budget" in str(m.content) for m in llm.sent[2]) == 1  # only after the cut-off reply
+
+
 def test_tool_with_bad_arguments_returns_a_correctable_error():
     import asyncio as _asyncio
     from harness.tools.base import Tool as _Tool

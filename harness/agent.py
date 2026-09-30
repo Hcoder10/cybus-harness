@@ -30,6 +30,11 @@ _NO_SUBMIT = ("You ended your turn without calling `submit`. If you are done, ca
 _LAST_STEP = "You have one step left: call `submit` now with your best answer."
 _FORCED_SUBMIT = ("You are out of steps and no other tool is available now. Call `submit` with your report of what "
                   "you have done so far (what works, what is unfinished).")
+# Live: a reply that fills the whole output budget is cut off, yet vLLM still reports finish_reason "tool_calls" and
+# its tool parser silently drops the unfinished argument (a builder's write_file arrived as {path} 13 times).
+_CUT_OFF = ("Your last reply used the whole output budget ({n} tokens) and was cut off: whatever came at its end, "
+            "usually the biggest argument, never arrived. Send big content in parts (for a long file: write_file "
+            "with the first part, then append_file for each next part; for a big change: several edit_file calls).")
 
 
 @dataclass
@@ -165,6 +170,12 @@ class Agent:
             log.debug("[%s] step %d: %s", self.name, steps, ", ".join(c.name for c in message.tool_calls))
             outcomes = await self._run_calls(message.tool_calls, tools, submit)
             self._add_results(outcomes, add)
+            budget = getattr(self.llm, "max_tokens", None)
+            used = (response.usage or {}).get("completion_tokens")
+            if isinstance(budget, int) and isinstance(used, (int, float)) and budget > 0 and used >= budget \
+                    and not any(o.submitted for o in outcomes):
+                log.info("[%s] step %d: reply cut off at %d tokens", self.name, steps, used)
+                add(Message("user", _CUT_OFF.format(n=int(used))))
             for o in outcomes:
                 if o.submitted:
                     return finish("submitted", o.value)
