@@ -173,6 +173,53 @@ def arch_problems(arch: dict) -> list[str]:
     return out
 
 
+# Containers the architect invents: a LocalScript in StarterPlayer/PlayerScripts never runs (live: a rhythm game's
+# whole client, 11 scripts, kept that path through the repair round).
+_CONTAINER_FIXES = (("StarterPlayer/PlayerScripts/", "StarterPlayer/StarterPlayerScripts/"),
+                    ("StarterPlayer/CharacterScripts/", "StarterPlayer/StarterCharacterScripts/"),
+                    ("StarterPlayer/StarterGui/", "StarterGui/"), ("StarterPlayer/PlayerGui/", "StarterGui/"))
+
+
+def fix_placement(arch: dict) -> tuple[dict, dict[str, str]]:
+    """Move scripts that cannot run where the architecture put them, mechanically: a LocalScript into
+    StarterPlayer/StarterPlayerScripts, a server Script into ServerScriptService (keeping the path below the
+    container). Before any code exists a path is only a name; afterwards siblings move together, so relative
+    requires keep working. Returns the fixed architecture and {old path: new path}."""
+    files = arch.get("files") or []
+    taken = set()
+    for f in files:
+        try:
+            taken.add(_canon(f.get("path", "")))
+        except ValueError:
+            pass
+    moves: dict[str, str] = {}
+    for old in sorted(taken):
+        new = old
+        for bad, good in _CONTAINER_FIXES:
+            if new.startswith(bad):
+                new = good + new[len(bad):]
+        info = parse_rel(new)
+        rest = new.split("/", 1)[1]
+        if info.class_name == "LocalScript" and not new.startswith(CLIENT_CONTAINERS):
+            new = "StarterPlayer/StarterPlayerScripts/" + (rest.split("/", 1)[1] if new.startswith("StarterPlayer/")
+                                                            else rest)
+        elif info.class_name == "Script" and not new.startswith(SERVER_CONTAINERS):
+            new = "ServerScriptService/" + rest
+        if new != old and new not in taken and new not in moves.values():
+            moves[old] = new
+    if not moves:
+        return arch, {}
+
+    def moved(p: Any) -> Any:
+        try:
+            return moves.get(_canon(p), p)
+        except ValueError:
+            return p
+    out = {**arch, "files": [{**f, "path": moved(f.get("path", ""))} for f in files],
+           "items": [{**it, "files": [moved(p) for p in it.get("files") or []]} for it in arch.get("items") or []]}
+    return out, moves
+
+
 def normalize_arch(arch: dict, max_items: int) -> tuple[dict, list[str]]:
     """Canonical paths, unique item ids, disjoint file ownership, no harness-owned files. Returns notes."""
     notes: list[str] = []
@@ -629,6 +676,17 @@ class Build:
         pinned = self._artifact("architecture.json")
         if isinstance(pinned, dict) and isinstance(pinned.get("arch"), dict) and pinned["arch"].get("items"):
             self.arch = pinned["arch"]
+            # An architecture accepted with scripts where they cannot run (a partial repair was accepted): move them
+            # now, files and all, and keep the record (siblings move together, so relative requires still work).
+            self.arch, moves = fix_placement(self.arch)
+            if moves:
+                for old, new in moves.items():
+                    if (self.ws.src / old).exists() and not (self.ws.src / new).exists():
+                        self.ws.write(new, self.ws.read(old))
+                        (self.ws.src / old).unlink()
+                    wf.log(f"architecture: moved {old} to {new} (it could not run where it was)")
+                self.save("architecture.json", {"arch": self.arch, "notes": list(pinned.get("notes") or []) + [
+                    f"moved {o} to {n}" for o, n in moves.items()]})
             self.items = self.arch["items"]
             wf.log(f"architecture: reusing architecture.json from this run ({len(self.items)} items)")
             return
@@ -636,14 +694,28 @@ class Build:
                               system=prompts.LEAD_SYSTEM, schema=schemas.ARCH, label="architecture")
         if not isinstance(arch, dict):
             raise RuntimeError("the lead produced no architecture")
-        problems = arch_problems(arch)
-        if problems:                        # one repair round: placement mistakes make code silently not run
+        moved: dict[str, str] = {}
+        for rnd in range(2):                # repair rounds: placement mistakes make code silently not run
+            arch, more = fix_placement(arch)                 # the mechanical moves first, then ask for the rest
+            moved.update(more)
+            problems = arch_problems(arch)
+            if not problems:
+                break
             wf.log(f"architecture: {len(problems)} placement problem(s); asking the lead to fix them")
             fixed = await wf.agent(prompts.arch_fix_brief(arch, problems), role=self.reviser, system=prompts.LEAD_SYSTEM,
-                                   schema=schemas.ARCH, label="architecture-fix")
-            if isinstance(fixed, dict) and len(arch_problems(fixed)) < len(problems):
-                arch = fixed
+                                   schema=schemas.ARCH, label="architecture-fix" + (f"{rnd}" if rnd else ""))
+            if not (isinstance(fixed, dict) and len(arch_problems(fixed)) < len(problems)):
+                break
+            arch = fixed
+        arch, more = fix_placement(arch)
+        moved.update(more)
+        for old, new in moved.items():
+            wf.log(f"architecture: moved {old} to {new} (it could not run where it was)")
+        left = arch_problems(arch)
+        if left:
+            wf.log(f"architecture: accepted with {len(left)} placement problem(s) left: " + "; ".join(left)[:600])
         self.arch, notes = normalize_arch(arch, self.cfg.max_items)
+        notes = [f"moved {o} to {n}" for o, n in moved.items()] + notes
         self.items = self.arch["items"]
         if not self.items:
             raise RuntimeError("the architecture has no buildable items")

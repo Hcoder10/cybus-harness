@@ -436,3 +436,52 @@ def test_resume_reuses_finished_phase_artifacts(tmp_path: Path):
                                other, BuildConfig(), tmp_path).run({"id": "harbour", "pitch": "x"}))
     assert report["title"] == "Harbour Lights"
     assert json.loads((tmp_path / "architecture.json").read_text(encoding="utf-8")) == first_arch
+
+
+def test_scripts_that_cannot_run_are_moved_to_where_they_run():
+    from harness.workflows.build_game import arch_problems, fix_placement
+    arch = {"files": [{"path": "src/StarterPlayer/PlayerScripts/Hud.client.luau", "api": "none"},
+                      {"path": "StarterPlayer/PlayerScripts/Cam/Director.client.luau", "api": "none"},
+                      {"path": "ReplicatedStorage/Client/Input.client.luau", "api": "none"},
+                      {"path": "ServerStorage/Systems/Loop.server.luau", "api": "none"},
+                      {"path": "ReplicatedStorage/Shared/Config.luau", "api": "Config.values"}],
+            "items": [{"id": "hud", "files": ["StarterPlayer/PlayerScripts/Hud.client.luau",
+                                              "src/StarterPlayer/PlayerScripts/Cam/Director.client.luau"]},
+                      {"id": "core", "files": ["ReplicatedStorage/Client/Input.client.luau",
+                                               "ServerStorage/Systems/Loop.server.luau",
+                                               "ReplicatedStorage/Shared/Config.luau"]}]}
+    assert len(arch_problems(arch)) == 4
+    fixed, moves = fix_placement(arch)
+    assert moves == {"StarterPlayer/PlayerScripts/Hud.client.luau": "StarterPlayer/StarterPlayerScripts/Hud.client.luau",
+                     "StarterPlayer/PlayerScripts/Cam/Director.client.luau":
+                         "StarterPlayer/StarterPlayerScripts/Cam/Director.client.luau",
+                     "ReplicatedStorage/Client/Input.client.luau":
+                         "StarterPlayer/StarterPlayerScripts/Client/Input.client.luau",
+                     "ServerStorage/Systems/Loop.server.luau": "ServerScriptService/Systems/Loop.server.luau"}
+    assert arch_problems(fixed) == []
+    assert fixed["items"][0]["files"] == ["StarterPlayer/StarterPlayerScripts/Hud.client.luau",
+                                          "StarterPlayer/StarterPlayerScripts/Cam/Director.client.luau"]
+    assert fixed["files"][4]["path"] == "ReplicatedStorage/Shared/Config.luau"          # modules stay put
+    assert fix_placement(fixed) == (fixed, {})
+
+
+def test_resume_moves_written_scripts_out_of_places_they_cannot_run(tmp_path: Path):
+    from harness.tools.workspace import Workspace
+    from harness.workflow import Workflow
+    ws = Workspace(tmp_path / "workspace")
+    bad = "StarterPlayer/PlayerScripts/Hud.client.luau"
+    ws.write(bad, "print('hud')\n")
+    ws.write("ServerScriptService/Game.server.luau", "print('game')\n")
+    ws.write("ReplicatedStorage/Shared/Config.luau", "return {}\n")
+    arch = {**ARCH, "files": [f if "Hud" not in f["path"] else {**f, "path": bad} for f in ARCH["files"]],
+            "items": [it if it["id"] != "hud" else {**it, "files": [bad]} for it in ARCH["items"]]}
+    for name, obj in (("plan.json", PLAN), ("style.json", {"style": STYLE}), ("architecture.json", {"arch": arch})):
+        (tmp_path / name).write_text(json.dumps(obj), encoding="utf-8")
+    fake = FakeLLM()
+    roles = {r: fake for r in ("lead", "art", "builder", "critic", "judge")}
+    asyncio.run(Build(Workflow("m", tmp_path, roles, resume=False), ws, None, fake, BuildConfig(), tmp_path)
+                .run({"id": "harbour", "pitch": "x"}))
+    good = "StarterPlayer/StarterPlayerScripts/Hud.client.luau"
+    assert good in ws.files() and bad not in ws.files()
+    saved = json.loads((tmp_path / "architecture.json").read_text(encoding="utf-8"))
+    assert saved["arch"]["items"][1]["files"] == [good] and any("moved" in n for n in saved["notes"])
