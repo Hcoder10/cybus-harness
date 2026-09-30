@@ -675,6 +675,19 @@ class Build:
             again = brief + "\n\n" + nudge if isinstance(brief, str) else brief + [text_part(nudge)]
             rep = await self.wf.agent(again, role="builder", system=system, tools=self.builder_tools(item),
                                       schema=schemas.REPORT, label=label + "-retry", max_steps=self.cfg.builder_steps)
+        elif unbuilt:
+            # It wrote some files and left others as placeholders (live: a movement + flashlight item wrote
+            # Movement.luau, reported both files done, and left Flashlight.luau a stub). One pass aimed at those.
+            done = [p for p in item["files"] if p not in unbuilt]
+            nudge = (f"These files of yours are still the harness placeholder, so their part of the item does not "
+                     f"exist in the game: {', '.join(unbuilt)}. Write them now: complete, working code for their part "
+                     f"of the brief. {', '.join(done)} {'is' if len(done) == 1 else 'are'} already written (the "
+                     "content above is from before you started; read_file shows it now): change them only where the "
+                     "new files need it. Then submit.")
+            again = brief + "\n\n" + nudge if isinstance(brief, str) else brief + [text_part(nudge)]
+            more = await self.wf.agent(again, role="builder", system=system, tools=self.builder_tools(item),
+                                       schema=schemas.REPORT, label=label + "-finish", max_steps=self.cfg.builder_steps)
+            rep = more if isinstance(more, dict) else rep
         await self.gate(item, label)
         return rep if isinstance(rep, dict) else None
 

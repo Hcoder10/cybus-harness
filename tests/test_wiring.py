@@ -1,4 +1,5 @@
-"""The static wiring check (requires that cannot reach a module), and the build gate that sends them back."""
+"""The static wiring check (requires that cannot reach a module), the build gate that sends them back, and the
+finishing pass for files a builder left as placeholders."""
 from __future__ import annotations
 
 import asyncio
@@ -143,3 +144,44 @@ def test_build_gate_sends_wiring_problems_back_and_moves_orphan_stubs(tmp_path: 
     labels = [json.loads(line).get("label") for line in
               (tmp_path / "journal.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
     assert "build:core-wiring" in labels
+
+
+class HalfDoneLLM(FakeLLM):
+    """The core-loop builder writes its script and leaves its config module a placeholder until told."""
+
+    def __init__(self):
+        super().__init__()
+        self.finish_briefs: list[str] = []
+
+    async def chat(self, messages, tools=None):
+        names = [t["function"]["name"] for t in tools or []]
+        task = messages[1].content if isinstance(messages[1].content, str) else messages[1].content[0]["text"]
+        wrote = any(m.role == "tool" for m in messages)
+        if "write_file" in names and not wrote and "- ServerScriptService/Game.server.luau" in task:
+            if "still the harness placeholder" in task:
+                self.finish_briefs.append(task)
+                calls = [ToolCall("f", "write_file", {"path": "ReplicatedStorage/Shared/Config.luau",
+                                                      "content": "local M = {rounds = 3}\nreturn M\n"})]
+            else:
+                calls = [ToolCall("w", "write_file", {"path": "ServerScriptService/Game.server.luau",
+                                                      "content": "print('rounds')\n"})]
+            return LLMResponse(Message("assistant", "", tool_calls=calls), {}, "tool_calls", {})
+        return await super().chat(messages, tools)
+
+
+def test_placeholders_left_by_a_builder_get_a_finishing_pass(tmp_path: Path):
+    from harness.tools.workspace import Workspace
+    from harness.workflow import Workflow
+    ws = Workspace(tmp_path / "workspace")
+    fake = HalfDoneLLM()
+    roles = {r: fake for r in ("lead", "art", "builder", "critic", "judge")}
+    report = asyncio.run(Build(Workflow("finish", tmp_path, roles, resume=False), ws, None, fake, BuildConfig(),
+                               tmp_path).run({"id": "harbour", "pitch": "x"}))
+    assert len(fake.finish_briefs) == 1
+    assert "ReplicatedStorage/Shared/Config.luau" in fake.finish_briefs[0].rsplit("still the harness placeholder", 1)[1]
+    assert "rounds = 3" in ws.read("ReplicatedStorage/Shared/Config.luau")
+    assert ws.read("ServerScriptService/Game.server.luau") == "print('rounds')\n"
+    assert report["stubs_left"] == []
+    labels = [json.loads(line).get("label") for line in
+              (tmp_path / "journal.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert "build:core-finish" in labels and "build:core-retry" not in labels
