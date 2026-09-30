@@ -391,6 +391,15 @@ class FileCheck:
                 parsed = self._chain_at(m.end(), whole=r"\s*\)")
                 if parsed:
                     check(m.start(), parsed[1] + 1, parsed[0])
+        # A player's character is a property, never a child (live: a server join handler waited 10 s for it and got
+        # nil, so no player was ever placed at the pier).
+        for m in re.finditer(r":\s*(?:WaitForChild|FindFirstChild)\(\s*[\"']Character[\"']", self.src):
+            if self.mask[m.start()] != ":":
+                continue                                           # inside a string (blanked in the mask)
+            out.append((m.start(), f"line {self.line_of(m.start())}: {' '.join(self.raw[m.start():m.end() + 8].split())}"
+                                   f"... looks for a child named Character, but a player's character is the "
+                                   "player.Character property (a model in Workspace), never a child: this returns nil "
+                                   "or waits forever. Use player.Character or player.CharacterAdded:Wait()."))
         for name, prefix in self._helpers().items():
             for m in re.finditer(rf"(?<![\w.:]){re.escape(name)}\s*\(\s*(\"[^\"\n]*\"|'[^'\n]*')\s*[,)]", self.src):
                 if self.mask[m.start():m.start() + len(name)] != name:        # inside a string

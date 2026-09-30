@@ -85,6 +85,15 @@ def test_what_it_cannot_see_is_never_reported():
     assert len(problems("StarterPlayer/StarterPlayerScripts/Game.client.luau", bad)) == 1
 
 
+def test_waiting_for_a_character_child_is_reported():
+    src = ('local Players = game:GetService("Players")\n'
+           'Players.PlayerAdded:Connect(function(player)\n'
+           '\tlocal character = player.Character or player:WaitForChild("Character", 10)\n'
+           '\tprint("Character")\nend)\n')
+    probs = problems("ServerScriptService/Game.server.luau", src)
+    assert len(probs) == 1 and probs[0].startswith("line 3:") and "player.CharacterAdded:Wait()" in probs[0]
+
+
 def test_comment_stripping_keeps_offsets_and_the_kit_is_clean():
     src = 'local a = "--x" -- c\n--[==[ long\n]==] local b = [[ -- s ]]\n'
     out = strip_comments(src)
