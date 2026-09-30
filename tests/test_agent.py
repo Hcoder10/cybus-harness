@@ -382,3 +382,18 @@ def test_images_are_capped_per_request():
     _asyncio.run(_Agent(llm, "sys", [_Tool("paint", "paint", {"type": "object", "properties": {}}, paint)],
                         max_steps=20).run("task"))
     assert max(llm.counts) <= _Agent.max_images and llm.counts[-1] == _Agent.max_images
+
+
+def test_tool_with_bad_arguments_returns_a_correctable_error():
+    import asyncio as _asyncio
+    from harness.tools.base import Tool as _Tool
+
+    async def search(query: str, kind: str = "sfx"):
+        return f"found {query}"
+
+    t = _Tool("search", "search", {"type": "object", "properties": {"query": {"type": "string"},
+                                                                  "kind": {"type": "string"}},
+                                   "required": ["query"]}, search)
+    bad = _asyncio.run(t.invoke({"path": "x"}))
+    assert bad.text.startswith("ERROR: bad arguments for search") and "required: query" in bad.text
+    assert _asyncio.run(t.invoke({"query": "splash"})).text == "found splash"

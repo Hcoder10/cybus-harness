@@ -99,7 +99,21 @@ class AudioSearch:
     def tools(self) -> list:
         from harness.tools.base import Tool, ToolResult
 
-        async def search_audio(query: str, kind: str = "sfx", limit: int = 8) -> ToolResult:
+        async def search_audio(query: str = "", kind: str = "sfx", limit: int = 8, **extra) -> ToolResult:
+            # Live, builders called this with the query under other names (or none), which raised TypeError and
+            # cost an audio item 50 minutes of retries: accept the usual aliases and explain what is missing.
+            if not query:
+                for k in ("q", "text", "term", "terms", "keywords", "search", "name", "sound", "description", "prompt"):
+                    if isinstance(extra.get(k), str) and extra[k].strip():
+                        query = extra[k]
+                        break
+            if not str(query).strip():
+                return ToolResult(text="ERROR: search_audio needs `query`: a few words describing the sound, e.g. "
+                                       "{\"query\": \"water splash\", \"kind\": \"sfx\"}")
+            try:
+                limit = int(limit)
+            except (TypeError, ValueError):
+                limit = 8
             rows = await self.search(query, kind if kind in ("sfx", "music", "any") else None, max(1, min(15, limit)))
             if not rows:
                 return ToolResult(text=f"no audio found for {query!r}; try other words (e.g. 'whoosh', 'coin pickup', "

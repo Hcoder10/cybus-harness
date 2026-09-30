@@ -31,8 +31,20 @@ class Tool:
                              "parameters": self.parameters or {"type": "object", "properties": {}}}}
 
     async def invoke(self, arguments: dict | None = None) -> ToolResult:
-        """Call fn with the arguments as keywords (a plain function works too) and normalize its result."""
-        out = self.fn(**(arguments or {}))
+        """Call fn with the arguments as keywords (a plain function works too) and normalize its result. Arguments
+        that do not fit the function (a missing required one, an unknown name) come back as a plain error naming the
+        expected parameters, so the model can correct the call instead of seeing a Python TypeError."""
+        args = dict(arguments or {})
+        try:
+            inspect.signature(self.fn).bind(**args)
+        except TypeError as e:
+            props = (self.parameters or {}).get("properties", {})
+            required = (self.parameters or {}).get("required", [])
+            return ToolResult(text=f"ERROR: bad arguments for {self.name}: {e}. Expected parameters: "
+                                   f"{', '.join(props) or '(none)'}; required: {', '.join(required) or '(none)'}.")
+        except ValueError:          # builtins without a signature: just call
+            pass
+        out = self.fn(**args)
         if inspect.isawaitable(out):
             out = await out
         return as_tool_result(out)
