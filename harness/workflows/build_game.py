@@ -22,6 +22,7 @@ import asyncio
 import hashlib
 import io
 import json
+import os
 import logging
 import re
 import time
@@ -964,7 +965,10 @@ async def run_build(idea: dict, run_dir: Path, *, cfg: BuildConfig | None = None
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
     roles = {r: llm_from_env(r) for r in ("lead", "art", "builder", "critic", "judge", "reviser", "architect")}
-    wf = Workflow(f"build_game:{idea.get('id', 'game')}", run_dir, roles, resume=resume)
+    # Agents in flight per build. One model server shared by several builds saturates its KV cache (live: five
+    # builds x 6 agents at 64k contexts kept vLLM at 97% KV with requests queued and 40 tok/s total).
+    concurrency = int(os.environ.get("HARNESS_CONCURRENCY", "6"))
+    wf = Workflow(f"build_game:{idea.get('id', 'game')}", run_dir, roles, concurrency=concurrency, resume=resume)
     ws = Workspace(run_dir / "workspace")
     run_id = re.sub(r"[^a-z0-9_]+", "_", f"{idea.get('id', 'game')}_{run_dir.name}".lower())
     stage = bridge = None
