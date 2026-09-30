@@ -276,6 +276,15 @@ function Debug.initServer()
 	captureLogs("server")
 	builtinsServer()
 	local storage = game:GetService("ServerStorage")
+	-- For a person play-testing in Studio: with the view on Server, run in the command bar
+	--   print(game:GetService("HttpService"):JSONEncode(game.ServerStorage.CybusDebug:Invoke("<command>")))
+	-- A BindableFunction reaches this module's commands however the command bar's require is cached.
+	local door = Instance.new("BindableFunction")
+	door.Name = "CybusDebug"
+	door.OnInvoke = function(name, ...)
+		return Debug.call(name, ...)
+	end
+	door.Parent = storage
 	local port, token = storage:GetAttribute("CybusHarnessPort"), storage:GetAttribute("CybusHarnessToken")
 	if port and token then
 		task.spawn(pollHarness, port, token)
