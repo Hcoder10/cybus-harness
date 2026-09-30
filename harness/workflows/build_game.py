@@ -738,7 +738,10 @@ class Build:
                    "inside a pcall the module is silently missing. A property, enum item, class or function that does "
                    f"not exist (API) errors on that line:\n{listing}{modules}\n\nFix exactly these lines with edit_file "
                    "(read the lines around each first): walk to modules one name at a time, and use the real Roblox "
-                   "names listed. Keep everything else as it is, run check_code until it reports no WIRING or API "
+                   f"names listed. You can edit only your own files ({', '.join(item['files'])}): when another "
+                   "module lacks a function you call, do not rename the call; use only what that module already "
+                   "exports (read it), or compute the value in your own code (e.g. find the instance it would "
+                   "return). Keep everything else as it is, run check_code until it reports no WIRING or API "
                    "problems, then submit.")
             await self.wf.agent(fix, role="builder", system=prompts.FIXER_SYSTEM, tools=self.builder_tools(item),
                                 schema=schemas.REPORT, label=f"{label}-runtime{attempt}", max_steps=16)
