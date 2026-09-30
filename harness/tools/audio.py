@@ -12,7 +12,9 @@ import logging
 import time
 from pathlib import Path
 
-import httpx
+import urllib.error
+import urllib.parse
+import urllib.request
 
 log = logging.getLogger("harness.audio")
 
@@ -71,17 +73,27 @@ class AudioSearch:
         return rank(self._cache[key], kind)[:limit]
 
     async def _fetch(self, query: str) -> list[dict]:
-        params = {"searchCategoryType": "Audio", "query": query, "maxPageSize": 40}
-        for attempt in range(4):
+        # urllib, not httpx: in one venv (the model server's, with extra compression codecs) every httpx request
+        # to this endpoint timed out while urllib and curl answered in 0.3 s.
+        params = urllib.parse.urlencode({"searchCategoryType": "Audio", "query": query, "maxPageSize": 40})
+
+        def get() -> tuple[int, bytes]:
+            req = urllib.request.Request(f"{SEARCH_URL}?{params}", headers={"User-Agent": "cybus-harness"})
             try:
-                async with httpx.AsyncClient(timeout=20, headers={"User-Agent": "cybus-harness"}) as http:
-                    r = await http.get(SEARCH_URL, params=params)
-                if r.status_code == 200:
-                    return [x for x in (_row(i) for i in r.json().get("creatorStoreAssets") or []) if x]
-                log.warning("audio search %r: HTTP %s", query, r.status_code)
-            except (httpx.HTTPError, ValueError) as e:
-                log.warning("audio search %r failed: %s", query, e)
-            await asyncio.sleep(2 + attempt * 3)
+                with urllib.request.urlopen(req, timeout=15) as r:
+                    return r.status, r.read()
+            except urllib.error.HTTPError as e:
+                return e.code, b""
+
+        for attempt in range(3):
+            try:
+                status, body = await asyncio.to_thread(get)
+                if status == 200:
+                    return [x for x in (_row(i) for i in json.loads(body).get("creatorStoreAssets") or []) if x]
+                log.warning("audio search %r: HTTP %s", query, status)
+            except (OSError, ValueError) as e:
+                log.warning("audio search %r failed: %s: %s", query, type(e).__name__, e)
+            await asyncio.sleep(1 + attempt * 2)
         return []
 
     def tools(self) -> list:
