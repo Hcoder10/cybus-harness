@@ -97,9 +97,12 @@ def style_markdown(style: dict) -> str:
     ])
 
 
+STUB_MARK = "(stub created by the harness; the owning item replaces it)"
+
+
 def stub_source(path: str, responsibility: str, api: str) -> str:
     """A loadable placeholder so every require resolves before its owner writes the real file."""
-    head = f"-- {responsibility}\n-- API: {api}\n-- (stub created by the harness; the owning item replaces it)\n"
+    head = f"-- {responsibility}\n-- API: {api}\n-- {STUB_MARK}\n"
     info = parse_rel(path)
     if info.class_name == "ModuleScript":
         return head + "local M = {}\nreturn M\n"
@@ -577,7 +580,10 @@ class Build:
         rep = await self.wf.agent(brief, role="builder", system=system, tools=self.builder_tools(item),
                                   schema=schemas.REPORT, label=label, max_steps=self.cfg.builder_steps)
         after = {p: _digest(s) for p, s in self.owned_sources(item).items()}
-        if before == after:                  # the agent ended without changing anything: one direct retry
+        # One direct retry when the agent ended without changing anything AND something of its is still a stub.
+        # (A builder resuming over files an earlier attempt already wrote may rightly change nothing.)
+        unbuilt = [p for p, src in self.owned_sources(item).items() if not src.strip() or STUB_MARK in src]
+        if before == after and unbuilt:
             nudge = ("You ended without changing any of your files. The task requires code changes. Write the "
                      "files now with write_file or edit_file, then submit.")
             again = brief + "\n\n" + nudge if isinstance(brief, str) else brief + [text_part(nudge)]
