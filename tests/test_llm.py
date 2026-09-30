@@ -100,7 +100,7 @@ def test_context_overflow_retries_with_the_budget_that_fits():
     server = Server(httpx.Response(400, json={"error": {"message": msg}}), openai_reply("ok"))
     r = chat(make_llm(server, max_tokens=16384), [Message("user", "hi")])
     assert r.message.content == "ok" and server.body(0)["max_tokens"] == 16384
-    assert server.body(1)["max_tokens"] == 65536 - 49153 - 64
+    assert server.body(1)["max_tokens"] == 16384 // 2       # the reported prompt is only a lower bound
 
 
 def test_native_tool_calls_and_request_shape():

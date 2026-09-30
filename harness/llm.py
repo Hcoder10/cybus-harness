@@ -577,7 +577,10 @@ class LLM:
 
     async def _post(self, url: str, headers: dict, body: dict) -> dict:
         client = self._client()
-        for attempt in range(self.max_retries + 1):
+        shrinks = 0
+        for attempt in range(self.max_retries + 5):
+            if attempt - shrinks > self.max_retries:
+                break
             wait = None
             try:
                 resp = await client.post(url, headers=headers, json=body)
@@ -595,15 +598,17 @@ class LLM:
                     return data
                 problem, status = f"HTTP {resp.status_code}: {resp.text[:1000]}", resp.status_code
                 fit = _fit_output_budget(resp.text, body) if status == 400 else None
-                if fit is not None:
-                    # prompt + requested output > the server's context window: ask for what still fits, once
+                if fit is not None and shrinks < 4:
+                    # prompt + requested output > the server's context window. vLLM reports only a lower bound for
+                    # the prompt, so halve the output budget (at least) until it fits.
+                    shrinks += 1
                     log.warning("%s: context window full; retrying with max_tokens=%d", self.model, fit)
                     body = {**body, ("max_completion_tokens" if "max_completion_tokens" in body else "max_tokens"): fit}
                     continue
                 if status not in _RETRY_STATUS and status < 500:
                     raise LLMError(f"{self.model}: {self._redact(problem)}", status)
                 wait = _retry_after(resp)
-            if attempt >= self.max_retries:
+            if attempt - shrinks >= self.max_retries:
                 raise LLMError(f"{self.model}: gave up after {attempt + 1} attempts: {self._redact(problem)}", status)
             if wait is None:
                 wait = self.retry_base_delay * 2 ** attempt * random.uniform(1.0, 1.25)
@@ -611,7 +616,7 @@ class LLM:
             log.warning("%s: %s; retry %d/%d in %.1fs", self.model, self._redact(problem[:200]),
                         attempt + 1, self.max_retries, wait)
             await asyncio.sleep(wait)
-        raise AssertionError("unreachable")
+        raise LLMError(f"{self.model}: the prompt does not fit the context window even with a small output budget")
 
 
 _CONTEXT_ERR = re.compile(r"maximum context length is (\d+) tokens.*?(?:requested|request) (\d+) output tokens.*?"
@@ -625,9 +630,9 @@ def _fit_output_budget(text: str, body: dict) -> int | None:
     if not m:
         return None
     window, asked, prompt = (int(x) for x in m.groups())
-    fit = window - prompt - 64
     current = int(body.get("max_completion_tokens") or body.get("max_tokens") or asked)
-    return fit if 512 <= fit < current else None
+    fit = min(window - prompt - 64, current // 2)     # the reported prompt is a lower bound: shrink by half at least
+    return fit if fit >= 1024 else None
 
 
 def llm_from_env(role: str) -> LLM:

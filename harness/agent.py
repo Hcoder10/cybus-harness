@@ -95,11 +95,11 @@ class Agent:
     keep_images = 2          # the newest captures survive image dropping
     max_images = 6           # never send more images than this in one request (server limits, e.g. vLLM's 8)
     image_tokens = 1500      # budget cost of one image (about a 1280px frame on current VLMs)
-    chars_per_token = 3.5
+    chars_per_token = 3.0    # Luau/JSON tokenize denser than prose; underestimating overflowed a 64k window
     max_submit_nudges = 2    # schema runs: how often to ask for `submit` when the model stops without it
 
     def __init__(self, llm: LLM, system: str, tools: list[Tool], name: str = "agent", max_steps: int = 40,
-                 max_tool_chars: int = 16000, context_budget_tokens: int = 40000):
+                 max_tool_chars: int = 16000, context_budget_tokens: int = 32000):
         self.llm = llm
         self.system = system
         self.tools = list(tools or [])
@@ -256,6 +256,11 @@ class Agent:
         """Rough prompt size: characters / chars_per_token, plus image_tokens per image."""
         return sum(self._tokens(m) for m in messages)
 
+    def _tool_tokens(self) -> float:
+        if getattr(self, "_tool_tokens_cache", None) is None:
+            self._tool_tokens_cache = sum(len(json.dumps(t.spec(), default=str)) for t in self.tools) / self.chars_per_token
+        return self._tool_tokens_cache
+
     def _tokens(self, m: Message) -> float:
         chars, images = 0, 0
         if isinstance(m.content, str):
@@ -289,7 +294,8 @@ class Agent:
             ctx[i] = replace(ctx[i], content=parts)
         sizes = [self._tokens(m) for m in ctx]
         total = sum(sizes)
-        budget = self.context_budget_tokens
+        # the tool schemas travel with every request too (spec tools carry long descriptions)
+        budget = self.context_budget_tokens - self._tool_tokens()
         if total <= budget:
             return
         stop = max(2, len(ctx) - self.keep_last_messages)  # ctx[2:stop] may be trimmed
