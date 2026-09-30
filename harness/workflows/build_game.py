@@ -1122,6 +1122,8 @@ def main() -> int:
     ap.add_argument("--no-studio", action="store_true", help="plan and write code only (no capture/judge)")
     ap.add_argument("--repair-rounds", type=int, default=2)
     ap.add_argument("--polish-rounds", type=int, default=2)
+    ap.add_argument("--evidence", action="store_true",
+                    help="also capture the benchmark's evidence (bench/aspects.yaml) so bench.score can judge the run")
     a = ap.parse_args()
     import yaml
     path, _, key = a.idea.partition("#")
@@ -1131,9 +1133,23 @@ def main() -> int:
         idea = next(i for i in pool if i.get("id") == key)
     else:
         idea = data
+    if Path(path).resolve().parent.name == "bench":
+        # A benchmark idea also carries the scorer's fields (craft_focus, done). A build gets what bench.run_bench
+        # gives it, the pitch with its id and title; the plan brief would otherwise quote the checklist it is scored on.
+        from bench.spec import harness_input
+        idea = harness_input(idea)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
     cfg = BuildConfig(repair_rounds=a.repair_rounds, polish_rounds=a.polish_rounds)
-    report = asyncio.run(run_build(idea, Path(a.run_dir), cfg=cfg, studio=not a.no_studio))
+    plan = None
+    if a.evidence:
+        from bench import evidence, spec
+        plan = evidence.evidence_plan(spec.load_aspects())
+        rec = Path(a.run_dir) / "bench_run.json"          # how bench.score learns which idea a run dir built
+        if not rec.exists():
+            rec.parent.mkdir(parents=True, exist_ok=True)
+            rec.write_text(json.dumps({"input": {k: idea.get(k) for k in ("id", "title", "pitch")},
+                                       "via": "harness.workflows.build_game --evidence"}, indent=1), encoding="utf-8")
+    report = asyncio.run(run_build(idea, Path(a.run_dir), cfg=cfg, studio=not a.no_studio, evidence_plan=plan))
     print(json.dumps(report, indent=1))
     return 0
 
