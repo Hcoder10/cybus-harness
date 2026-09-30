@@ -201,9 +201,11 @@ def classify(msg: str, src_line: str, defs: Defs, names: set[str], kind: str = "
                 or got == base or (base.startswith("Enum") and got in ("string", "number")) \
                 or (base in _STRINGISH and got in ("number", "string")) or (base == "number" and got == "string"):
             return None
+        if base.startswith("RBXScriptSignal"):
+            return (f"{prop.group(1)} is an event (connect to it with :Connect), not a property: assigning to it "
+                    "errors on this line. Set the property that does what you mean instead.")
         return (f"{prop.group(1)} takes a {base}, and this assigns a {got}, so this line errors (Unable to assign "
-                f"property {prop.group(1)})." + (f" It needs a {base} instance, not a position or value."
-                                                  if base in defs.classes and got not in defs.classes else ""))
+                f"property {prop.group(1)}).")
     m = re.match(r"^Key '([^']+)' not found in external type '([^']+)'$", msg)
     if m:
         key, typ = m.groups()
