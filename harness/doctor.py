@@ -79,9 +79,10 @@ async def main_async(args) -> int:
     _ok("luau-lsp", typecheck.available(), f"{typecheck.lsp_exe()} with {typecheck.defs_path()}" if typecheck.available()
         else "missing: Roblox API misuse (bad properties, enum items, classes) is only found in Studio; set "
              "HARNESS_LUAU_LSP and HARNESS_ROBLOX_DEFS")
-    free_gb = shutil.disk_usage(Path(args.run_root).anchor or ".").free / 1e9
-    need.append(_ok("disk", free_gb > 3, f"{free_gb:.1f} GB free on {Path(args.run_root).anchor} (a build writes "
-                                         "~0.2-0.5 GB of captures and logs)"))
+    drive = Path(args.run_root).resolve().anchor
+    free_gb = shutil.disk_usage(drive or ".").free / 1e9
+    need.append(_ok("disk", free_gb > 3, f"{free_gb:.1f} GB free on {drive} (a build writes ~0.2-0.5 GB of captures "
+                                         "and logs)"))
     if not args.no_studio:
         up, free = await check_bridge(args.bridge)
         need += [up, free]
