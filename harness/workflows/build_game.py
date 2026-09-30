@@ -324,6 +324,9 @@ class Build:
     def builder_tools(self, item: dict) -> list[Tool]:
         owned = set(item["files"])
         ws = self
+        # Cybus over-explores (measured before: a third of episodes staged no edit). Live, a track builder spent 28
+        # steps reading files and ran out of steps. Reads in a row without a write earn a nudge in the tool result.
+        reads = {"since_write": 0}
 
         def mine(path: str) -> str:
             p = _canon(path)
@@ -338,6 +341,7 @@ class Build:
             except (PermissionError, ValueError) as e:
                 return ToolResult(text=f"ERROR: {e}")
             ws.ws.write(p, content)
+            reads["since_write"] = 0
             probs = (await check_sources({p: content})).get(p, [])
             return ToolResult(text=f"wrote {p} ({content.count(chr(10)) + 1} lines)"
                               + ("\nPROBLEMS:\n" + "\n".join(probs[:12]) if probs else "\nno syntax errors"))
@@ -357,6 +361,7 @@ class Build:
                                        "Include more surrounding lines.")
             new_src = src.replace(old_text, new_text, 1)
             ws.ws.write(p, new_src)
+            reads["since_write"] = 0
             probs = (await check_sources({p: new_src})).get(p, [])
             return ToolResult(text=f"edited {p}" + ("\nPROBLEMS:\n" + "\n".join(probs[:12]) if probs else "\nno syntax errors"))
 
@@ -370,7 +375,12 @@ class Build:
             chunk = lines[a - 1:a - 1 + int(max_lines)]
             body = "\n".join(f"{a + i:4d}| {l}" for i, l in enumerate(chunk))
             more = f"\n... ({len(lines) - (a - 1 + len(chunk))} more lines)" if a - 1 + len(chunk) < len(lines) else ""
-            return ToolResult(text=f"{p} ({len(lines)} lines)\n{body}{more}")
+            reads["since_write"] += 1
+            nudge = ""
+            if reads["since_write"] >= 8:
+                nudge = (f"\n\nNOTE: you have read {reads['since_write']} files without writing any. Your brief already "
+                         "lists every file's API: stop reading and write your files now (write_file / edit_file).")
+            return ToolResult(text=f"{p} ({len(lines)} lines)\n{body}{more}{nudge}")
 
         async def list_files() -> ToolResult:
             rows = []
@@ -695,7 +705,8 @@ class Build:
             brief = prompts.item_brief(item, self.plan, self.style_md, self.arch, self.owned_sources(item),
                                        extra=("GENERATED ART SO FAR\n" + self.assets.listing()) if self.assets else "")
             rep = await self.build_agent(item, brief, f"build:{item['id']}", prompts.BUILDER_SYSTEM)
-            self._mark_built(item, rep)
+            if rep is not None:                 # only a build that reported is done; a failed one resumes
+                self._mark_built(item, rep)
         if self.stage is None:
             return {"id": item["id"], "report": rep}
         verdict = None
