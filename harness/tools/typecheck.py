@@ -47,7 +47,8 @@ _LIBS = {"task", "math", "string", "table", "coroutine", "utf8", "bit32", "buffe
          "NumberSequenceKeypoint", "ColorSequenceKeypoint", "NumberRange", "Rect", "Ray", "Random", "DateTime",
          "Font", "BrickColor", "PhysicalProperties", "RaycastParams", "OverlapParams", "Region3", "Enum", "game",
          "workspace", "Content", "Path2DControlPoint"}
-_LINE = re.compile(r"^(?P<file>.+?\.luau?) \[[^\]]*\]:(?P<line>\d+):[\d-]+: \((?P<code>\w+)\) (?P<kind>\w+): (?P<msg>.*)$")
+_LINE = re.compile(r"^(?P<file>.+?\.luau?)(?: \[[^\]]*\])?:(?P<line>\d+):[\d-]+: \((?P<code>\w+)\) (?P<kind>\w+): "
+                   r"(?P<msg>.*)$")
 _STRING = re.compile(r'"([^"\\\n]{1,80})"|\'([^\'\\\n]{1,80})\'')
 
 
@@ -78,6 +79,7 @@ class Defs:
         self.classes: dict[str, tuple[str | None, set[str]]] = {}
         self.enum_items: dict[str, set[str]] = {}
         self.enums: set[str] = set()
+        self.prop_types: dict[str, set[str]] = {}          # property name -> the types classes declare it with
         cur, base, members, fields = None, None, set(), set()
         for line in text.splitlines():
             m = re.match(r"^declare extern type (\w+)(?: extends (\w+))? with\s*(end)?\s*$", line)
@@ -96,11 +98,14 @@ class Defs:
                 self._close(cur, base, members, fields)
                 cur = None
                 continue
-            mm = re.match(r"^\t(function )?(\w+)", line)
+            mm = re.match(r"^\t(function )?(\w+)(.*)$", line)
             if mm:
                 members.add(mm.group(2))
                 if not mm.group(1):
                     fields.add(mm.group(2))
+                    tail = mm.group(3).strip()
+                    if tail.startswith(":") and not cur.startswith("Enum"):
+                        self.prop_types.setdefault(mm.group(2), set()).add(tail[1:].strip())
 
     def _close(self, name: str, base: str | None, members: set[str], fields: set[str]) -> None:
         if name.startswith("Enum") and name.endswith("_INTERNAL"):
@@ -176,8 +181,29 @@ def _close_matches(word: str, pool: set[str], n: int = 4) -> list[str]:
     return difflib.get_close_matches(word, sorted(pool), n=n, cutoff=0.5)
 
 
-def classify(msg: str, src_line: str, defs: Defs, names: set[str]) -> str | None:
+_CONCRETE = re.compile(r"[A-Z]\w*|number|string|boolean")
+_STRINGISH = {"string", "ContentId", "Content"}
+
+
+def classify(msg: str, src_line: str, defs: Defs, names: set[str], kind: str = "") -> str | None:
     """luau-lsp message -> a problem worth fixing (it errors when the line runs), or None."""
+    if kind == "ComparisonPrecedence":
+        return (f"{msg.split(';')[0]}: `not` binds tighter than the comparison, so this compares a boolean with a "
+                "number and errors (or is always false). Write not (X > Y), or X <= Y.")
+    m = re.match(r"^Expected this to be '([^']+)', but got '([^']+)'$", msg)
+    if m:
+        # Only an assignment to a Roblox property the definitions declare with exactly that type, from a value of
+        # a concrete different type Roblox does not convert (strings and numbers become enum items and text).
+        want, got = m.groups()
+        prop = re.search(r"\.\s*(\w+)\s*=(?!=)", src_line)
+        base = want.rstrip("?")
+        if not (prop and want in defs.prop_types.get(prop.group(1), set())) or not _CONCRETE.fullmatch(got) \
+                or got == base or (base.startswith("Enum") and got in ("string", "number")) \
+                or (base in _STRINGISH and got in ("number", "string")) or (base == "number" and got == "string"):
+            return None
+        return (f"{prop.group(1)} takes a {base}, and this assigns a {got}, so this line errors (Unable to assign "
+                f"property {prop.group(1)})." + (f" It needs a {base} instance, not a position or value."
+                                                  if base in defs.classes and got not in defs.classes else ""))
     m = re.match(r"^Key '([^']+)' not found in external type '([^']+)'$", msg)
     if m:
         key, typ = m.groups()
@@ -267,13 +293,14 @@ async def api_problems(ws_root: Path, check: list[str], timeout: float = 90) -> 
         m = _LINE.match(line.strip())
         if not m:
             continue
-        rel = by_abs.get(os.path.normcase(os.path.abspath(m.group("file"))))
+        f = m.group("file")
+        rel = by_abs.get(os.path.normcase(os.path.abspath(f if os.path.isabs(f) else os.path.join(ws_root, f))))
         if rel is None:
             continue
         ln = int(m.group("line"))
         lines = sources.get(rel, "").splitlines()
         text = lines[ln - 1] if 0 < ln <= len(lines) else ""
-        p = classify(m.group("msg"), text, defs, names)
+        p = classify(m.group("msg"), text, defs, names, m.group("kind"))
         if p:
             entry = f"line {ln}: {p}  `{text.strip()[:120]}`"
             if entry not in problems.setdefault(rel, []):
