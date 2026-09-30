@@ -95,13 +95,13 @@ def test_server_lists_taste_and_craft_tools():
     tools = {t.name: t for t in asyncio.run(SERVER.list_tools())}
     assert set(tools) == {"capture", "judge", "pairwise", "style_guide_template", "rubric", "install_kit",
                           "generate_tokens", "paint_texture", "list_textures", "author_clip", "list_clips",
-                          "search_audio", "playbook"}
+                          "search_audio", "playbook", "check_game"}
     assert "rounded_rect" in tools["paint_texture"].description          # the builder tools' own help
     assert "knees bend with NEGATIVE rx" in tools["author_clip"].description
     assert tools["paint_texture"].inputSchema["required"] == ["project_root", "name", "spec"]
     assert tools["search_audio"].inputSchema["properties"]["kind"]["enum"] == ["sfx", "music", "any"]
     assert "texture_spec" in tools["playbook"].description
-    for name in ("list_textures", "list_clips", "search_audio", "playbook"):
+    for name in ("list_textures", "list_clips", "search_audio", "playbook", "check_game"):
         assert tools[name].annotations.readOnlyHint is True, name
     for name in ("install_kit", "generate_tokens", "paint_texture", "author_clip"):
         assert tools[name].annotations.readOnlyHint is False, name
@@ -396,3 +396,15 @@ def test_search_audio_ranks_and_caches_without_network(tmp_path, monkeypatch):
     assert text_of(call("search_audio", query="glass harmonica")).startswith("no audio found for 'glass harmonica'")
     with pytest.raises(ToolError, match="query is required"):
         call("search_audio", query="  ")
+
+
+def test_check_game_reports_wiring_and_syntax(tmp_path):
+    src = tmp_path / "src" / "ServerScriptService"
+    src.mkdir(parents=True)
+    (src / "Main.server.luau").write_text('local Config = require(script.Parent:WaitForChild("Config"))\n',
+                                          encoding="utf-8")
+    out = text_of(call("check_game", project_root=str(tmp_path)))
+    assert "1 problem(s) in 1 of 1 file(s)" in out
+    assert "WIRING line 1:" in out and "ServerScriptService.Config, which does not exist" in out
+    (src / "Main.server.luau").write_text("print('ok')\n", encoding="utf-8")
+    assert "No problems in 1 file(s)." in text_of(call("check_game", project_root=str(tmp_path)))

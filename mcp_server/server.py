@@ -745,6 +745,58 @@ async def search_audio(
     return (await tool.invoke({"query": query, "kind": kind, "limit": limit})).text
 
 
+async def check_game(
+    project_root: Annotated[str, Field(description=ROOT_HELP)],
+    files: Annotated[list[str] | None, Field(description="Paths under src/ to check, e.g. "
+                                                          "ServerScriptService/Main.server.luau (default: every game "
+                                                          "file; the kit is skipped).")] = None,
+) -> str:
+    """Find the errors a Roblox game will hit when it runs, without Studio. SYNTAX: files that do not parse
+    (luau-analyze). WIRING: requires that cannot reach their module, i.e. the path walked from script, services and
+    WaitForChild does not exist, a dotted name passed to WaitForChild, a Folder required as a module, a client
+    requiring from ServerStorage. API: properties, enum items and classes Roblox does not have, and calls to
+    functions a module does not define (luau-lsp with Roblox's definitions). Every line reported fails when it runs:
+    fix them all before playtesting, then check again. Read-only."""
+    root = _project(project_root)
+    luau = _harness("harness.tools.luau")
+    wiring = _harness("harness.wiring")
+    typecheck = _harness("harness.tools.typecheck")
+    src = root / "src"
+    if not src.is_dir():
+        raise ValueError(f"{root} has no src/ directory (the Rojo layout: src/<Service>/.../<Name>.server.luau)")
+    every = sorted(str(p.relative_to(src)).replace("\\", "/") for p in src.rglob("*.lua*"))
+    if files:
+        chosen = []
+        for f in files:
+            rel = str(f).strip().replace("\\", "/").removeprefix("src/")
+            if rel not in every:
+                raise ValueError(f"{f!r} is not a file under {src}")
+            chosen.append(rel)
+    else:
+        chosen = [f for f in every if not f.startswith("ReplicatedStorage/Kit/")]
+    sources = {p: _read(src / p) for p in chosen}
+    found: dict[str, list[str]] = {}
+    for p, v in (await luau.check_sources(sources)).items():
+        found.setdefault(p, []).extend(v)
+    for p, v in wiring.wiring_problems(every, sources).items():
+        found.setdefault(p, []).extend("WIRING " + x for x in v)
+    for p, v in (await typecheck.api_problems(root, list(sources))).items():
+        found.setdefault(p, []).extend("API " + x for x in v)
+    lines = []
+    if luau.analyzer() is None:
+        lines.append("(luau-analyze not found: syntax and lints were not checked; set HARNESS_LUAU_ANALYZE)")
+    if not typecheck.available():
+        lines.append("(luau-lsp or Roblox's definitions not found: API misuse was not checked; see "
+                     "harness/tools/typecheck.py)")
+    n = sum(map(len, found.values()))
+    lines.append(f"{n} problem(s) in {len(found)} of {len(sources)} file(s)." if n else
+                 f"No problems in {len(sources)} file(s).")
+    for p, v in found.items():
+        lines.append(f"\n{p}")
+        lines += [f"  {x}" for x in v]
+    return "\n".join(lines)
+
+
 def playbook(
     name: Annotated[str, Field(description="Playbook name, e.g. texture_spec; empty lists them.")] = "",
 ) -> str:
@@ -807,6 +859,7 @@ def build_server(host: str = "127.0.0.1", port: int = 8765) -> FastMCP:
                 description=f"{clip_help}\n{inspect.cleandoc(author_clip.__doc__ or '')}")(author_clip)
     server.tool(structured_output=False, annotations=reads)(list_clips)
     server.tool(structured_output=False, annotations=web)(search_audio)
+    server.tool(structured_output=False, annotations=reads)(check_game)
     server.tool(structured_output=False, annotations=reads,
                 description=f"{inspect.cleandoc(playbook.__doc__ or '')} Available: {books}.")(playbook)
     return server
