@@ -722,7 +722,9 @@ class Build:
         # "Kit.Maid"). API: Roblox has no such property, enum item or class (live: beam.A, Enum.FontWeight.Normal,
         # Instance.new("Fog"), task.delay(fn)), or a module has no such function.
         runtime = await self.runtime_problems(item["files"])
-        if runtime:
+        for attempt in range(2):                 # live: up to ~70 in one game; one pass does not always clear them
+            if not runtime:
+                break
             n = sum(map(len, runtime.values()))
             listing = "\n".join(f"{p}:\n  " + "\n  ".join(v[:16]) for p, v in runtime.items())
             wiring = [x for v in runtime.values() for x in v if x.startswith("WIRING")]
@@ -739,9 +741,12 @@ class Build:
                    "names listed. Keep everything else as it is, run check_code until it reports no WIRING or API "
                    "problems, then submit.")
             await self.wf.agent(fix, role="builder", system=prompts.FIXER_SYSTEM, tools=self.builder_tools(item),
-                                schema=schemas.REPORT, label=f"{label}-runtime", max_steps=16)
-            left = sum(map(len, (await self.runtime_problems(item["files"])).values()))
+                                schema=schemas.REPORT, label=f"{label}-runtime{attempt}", max_steps=16)
+            runtime = await self.runtime_problems(item["files"])
+            left = sum(map(len, runtime.values()))
             self.wf.log(f"{item['id']}: {n} runtime problem(s) ({len(wiring)} wiring), {left} left after the fix")
+            if left >= n:                        # no progress: another pass would repeat this one
+                break
         return before != {p: _digest(s) for p, s in self.owned_sources(item).items()}
 
     async def see(self, item: dict, label: str):

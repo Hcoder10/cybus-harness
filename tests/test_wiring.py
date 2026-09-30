@@ -143,7 +143,7 @@ def test_build_gate_sends_wiring_problems_back_and_moves_orphan_stubs(tmp_path: 
     assert "ServerScriptService/Keep.server.luau" in ws.files()          # real code is never moved
     labels = [json.loads(line).get("label") for line in
               (tmp_path / "journal.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
-    assert "build:core-runtime" in labels
+    assert "build:core-runtime0" in labels
 
 
 class HalfDoneLLM(FakeLLM):

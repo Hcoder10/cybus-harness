@@ -214,8 +214,10 @@ PATHS_RULE = (
     "time: script.Parent:WaitForChild(\"Systems\"):WaitForChild(\"Economy\") from ServerScriptService/Main.server.luau, "
     "or game:GetService(\"ServerScriptService\").Systems.Economy. WaitForChild takes ONE name, never a dotted path "
     "like \"Kit.Maid\". Files under StarterPlayer/StarterPlayerScripts run from the player's PlayerScripts (their "
-    "script.Parent is PlayerScripts). Clients cannot see ServerScriptService or ServerStorage. check_code reports "
-    "requires that do not reach a real module.")
+    "script.Parent is PlayerScripts). Clients cannot see ServerScriptService or ServerStorage. Use only real Roblox "
+    "names: a property, enum item or class that does not exist errors on that line (Enum.FontWeight has Regular, not "
+    "Normal; a Beam's ends are Attachment0/Attachment1). check_code reports requires that do not reach a real module "
+    "(WIRING) and Roblox names that do not exist (API).")
 
 
 def aspect_context(aspect: str, spec_limit: int = 12000) -> str:
