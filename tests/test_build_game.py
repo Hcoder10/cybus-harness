@@ -410,3 +410,29 @@ def test_build_game_dry_run(tmp_path: Path):
     for name in ("plan.json", "style.json", "architecture.json", "report.json", "style.md"):
         assert (tmp_path / name).exists(), name
     assert "PALETTE" in style_markdown(STYLE)
+
+
+def test_resume_reuses_finished_phase_artifacts(tmp_path: Path):
+    """A second run in the same directory reuses plan/style/architecture even if the model would now answer
+    differently (e.g. after a prompt change), so a resume can never re-plan a half-built game."""
+    from harness.tools.workspace import Workspace
+    from harness.workflow import Workflow
+    fake = FakeLLM()
+    roles = {r: fake for r in ("lead", "art", "builder", "critic", "judge")}
+    asyncio.run(Build(Workflow("a", tmp_path, roles, resume=False), Workspace(tmp_path / "workspace"), None, fake,
+                      BuildConfig(), tmp_path).run({"id": "harbour", "pitch": "x"}))
+    first_arch = json.loads((tmp_path / "architecture.json").read_text(encoding="utf-8"))
+
+    class Different(FakeLLM):
+        async def chat(self, messages, tools=None):
+            r = await super().chat(messages, tools)
+            for c in r.message.tool_calls or []:
+                if c.name == "submit" and "title" in c.arguments:
+                    c.arguments = {**c.arguments, "title": "Something Else"}
+            return r
+    other = Different()
+    roles2 = {r: other for r in ("lead", "art", "builder", "critic", "judge")}
+    report = asyncio.run(Build(Workflow("b", tmp_path, roles2, resume=False), Workspace(tmp_path / "workspace"), None,
+                               other, BuildConfig(), tmp_path).run({"id": "harbour", "pitch": "x"}))
+    assert report["title"] == "Harbour Lights"
+    assert json.loads((tmp_path / "architecture.json").read_text(encoding="utf-8")) == first_arch

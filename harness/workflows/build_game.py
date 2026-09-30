@@ -57,6 +57,10 @@ class BuildConfig:
     plan_critique: bool = True
     reference_board: bool = True
     integrate: bool = True
+    # A finished phase's artifact (plan.json, style.json, architecture.json) is reused on resume even when the
+    # harness's prompts changed since: live, a KIT_API edit re-keyed the architecture call and Cybus designed a
+    # brand-new split on top of the old game's files.
+    reuse_artifacts: bool = True
     deadline: float | None = None       # unix time; polish rounds stop early to leave room for the report
     reserve_seconds: float = 1800       # time kept back before the deadline for the final report and evidence
 
@@ -422,9 +426,23 @@ class Build:
         return tools
 
     # ------------------------------------------------------------------ phases
+    def _artifact(self, name: str) -> dict | None:
+        path = self.run_dir / name
+        if not (self.cfg.reuse_artifacts and path.exists()):
+            return None
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+
     async def plan_phase(self, idea: dict) -> None:
         wf = self.wf
         wf.phase("Plan")
+        pinned = self._artifact("plan.json")
+        if isinstance(pinned, dict) and pinned.get("title"):
+            self.plan = pinned
+            wf.log("plan: reusing plan.json from this run")
+            return
         plan = await wf.agent(prompts.plan_brief(idea), role="lead", system=prompts.LEAD_SYSTEM, schema=schemas.PLAN,
                               label="plan")
         if not isinstance(plan, dict):
@@ -446,6 +464,15 @@ class Build:
         from harness.tokens import contrast_issues
         wf = self.wf
         wf.phase("Style")
+        pinned = self._artifact("style.json")
+        if isinstance(pinned, dict) and isinstance(pinned.get("style"), dict):
+            self.style = pinned["style"]
+            self.style_md = style_markdown(self.style)
+            src, problems = build_tokens(self.style)     # tokens are code-generated: re-run with today's repairs
+            self.ws.write(TOKENS_PATH, src)
+            wf.log("style: reusing style.json from this run" + (f"; tokens repaired: {'; '.join(problems[:4])}"
+                                                                 if problems else ""))
+            return
         cands = await wf.parallel([
             lambda i=i, a=a: wf.agent(prompts.style_brief(self.plan, a), role="art", system=prompts.ART_SYSTEM,
                                       schema=schemas.STYLE, label=f"style:{i}")
@@ -515,6 +542,12 @@ class Build:
     async def arch_phase(self) -> None:
         wf = self.wf
         wf.phase("Architect")
+        pinned = self._artifact("architecture.json")
+        if isinstance(pinned, dict) and isinstance(pinned.get("arch"), dict) and pinned["arch"].get("items"):
+            self.arch = pinned["arch"]
+            self.items = self.arch["items"]
+            wf.log(f"architecture: reusing architecture.json from this run ({len(self.items)} items)")
+            return
         arch = await wf.agent(prompts.arch_brief(self.plan, self.style_md, KIT_API), role=self.architect,
                               system=prompts.LEAD_SYSTEM, schema=schemas.ARCH, label="architecture")
         if not isinstance(arch, dict):
