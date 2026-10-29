@@ -1269,6 +1269,12 @@ async def run_build(idea: dict, run_dir: Path, *, cfg: BuildConfig | None = None
             build.extra_tools = build.extra_tools + fxspec.tools()
         except ImportError:
             log.warning("effect-spec checking unavailable (harness.tools.fxspec missing)")
+        # HARNESS_EXTRA_TOOLS=module:function adds tools from outside the harness; the function gets
+        # (build, stage, run_dir) and returns a list of Tool.
+        for spec in filter(None, os.environ.get("HARNESS_EXTRA_TOOLS", "").split(",")):
+            import importlib
+            mod, _, fn = spec.strip().partition(":")
+            build.extra_tools = build.extra_tools + list(getattr(importlib.import_module(mod), fn)(build, stage, run_dir))
         report = await build.run(idea, evidence_plan)
         final = run_dir / "place" / "final.rbxlx"
         if final.exists():
