@@ -436,6 +436,8 @@ class Stage:
                 f'if not m or m.Value ~= "{self.run_id}" then error("not this run\'s place", 0) end\n'
                 f'game:GetService("ServerStorage"):SetAttribute("CybusHarnessPort", {self.server.port})\n'
                 f'game:GetService("ServerStorage"):SetAttribute("CybusHarnessToken", "{self.token}")\n'
+                # a neutral default character in captures, not the tester's avatar (judges mistook it for game art)
+                'pcall(function() game:GetService("StarterPlayer").LoadCharacterAppearance = false end)\n'
                 'return "http=" .. tostring(game:GetService("HttpService").HttpEnabled)')
         res = await self.bridge.call("execution_run_luau", {"code": code})
         text = json.dumps(res)

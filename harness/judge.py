@@ -133,6 +133,11 @@ async def judge(llm, aspect: str, images: list[bytes], intent: str, style: str =
     parts: list[dict] = [text_part(
         f"ASPECT UNDER REVIEW: {aspect}\n\nWHAT THIS IS SUPPOSED TO BE (the developer's intent):\n{intent}\n\n"
         + (f"THE GAME'S STYLE GUIDE (the build must follow it):\n{style}\n\n" if style else "")
+        # Live (Starbloom): judges scored worlds 1/10 for "a bright blue glowing placeholder structure in the centre",
+        # which was the tester's own avatar in its spawn force-field bubble, and sent the repairs after it.
+        + "NOTE: the character near the centre of gameplay captures is the TESTER'S OWN Roblox avatar (its clothes, "
+          "crown or cape are not part of the game), possibly inside a translucent spawn force-field bubble, plus "
+          "Roblox's own top-left menu buttons. Ignore all of these entirely; judge only what the game built.\n\n"
         + f"RUBRIC FOR {aspect.upper()}:\n{rubric(aspect)}\n\nCAPTURES OF THE BUILD ({len(images)}):")]
     for k, im in enumerate(images):
         parts += [text_part(f"Capture {k + 1}:"), image_part(im)]
