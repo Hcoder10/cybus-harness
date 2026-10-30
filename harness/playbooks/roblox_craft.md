@@ -65,6 +65,11 @@ techniques, not a style.
 - Object motion: bob / spin / squash with TweenService; collect = scale bounce + burst + fade.
 
 ## World and lighting
+- BUILD THE WORLD WITH Kit.WorldKit, from the server, at game start: `WorldKit.lighting(mood, tints)` once, then
+  `WorldKit.archipelago` / `island` / `water` / `ground` for the land and `scatter` / `tree` / `lamp` / `lantern` /
+  `bridge` / `rock` to dress it, then your own signature pieces (the landmark, gameplay objects) from parts on top.
+  Its presets and terrain are tested to look right; hand-written geometry and lighting values were not (live: a
+  "golden hour" at ClockTime 16.5 rendered as flat noon haze, and hand-made MeshParts rendered as nothing).
 - In Studio edit mode set `Lighting.Technology` (Future for local light shadows), `ClockTime`,
   `GeographicLatitude`, `Brightness`, `Ambient` / `OutdoorAmbient`, `EnvironmentDiffuseScale` /
   `EnvironmentSpecularScale`, plus `Atmosphere` (Density, Offset, Color, Decay, Glare, Haze), a `Sky`,
