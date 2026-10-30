@@ -183,8 +183,10 @@ def arch_problems(arch: dict) -> list[str]:
                    "item) that requires the server modules and calls their init/start; modules alone never run")
     if arch.get("files") and "LocalScript" not in classes:
         out.append("there is no client entry LocalScript: add StarterPlayer/StarterPlayerScripts/Main.client.luau (a "
-                   "LocalScript, owned by one item) that requires the client modules (world, controls, camera, HUD, "
-                   "VFX) and calls their init/start; modules alone never run")
+                   "LocalScript) that requires the client modules (world, controls, camera, HUD, VFX) and calls their "
+                   "init/start, each guarded with `if type(m.init) == \"function\"` (modules other items have not "
+                   "built yet are empty stubs); give it to the world_art item, which is built first, so the world "
+                   "is on screen when every later item is captured. Modules alone never run")
     return out
 
 
