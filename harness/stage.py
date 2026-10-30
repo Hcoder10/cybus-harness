@@ -530,10 +530,15 @@ class Stage:
     async def calibrate(self) -> None:
         """Find the game viewport in Studio's window (a full-screen magenta frame shown by the kit) every
         session. A miss keeps the previous box only if the window is still the same size; the first miss fails."""
-        r = await self.server.call("__marker", True)
-        await asyncio.sleep(0.5)
-        raw = await capture.screenshot(self.bridge)
-        box = magenta_bbox(raw)
+        # Retried: a client still loading a big world (live: a replayed terrain world) shows the marker late.
+        for attempt in range(5):
+            r = await self.server.call("__marker", True)
+            await asyncio.sleep(0.5 + attempt * 1.5)
+            raw = await capture.screenshot(self.bridge)
+            box = magenta_bbox(raw)
+            if box:
+                break
+            log.info("calibration: no marker yet (attempt %d)", attempt + 1)
         if box and studio_is_foreground():
             try:                               # one click on the marker gives the game view keyboard focus
                 await self.bridge.call("input_click", {"x": (box[0] + box[2]) // 2, "y": (box[1] + box[3]) // 2})
