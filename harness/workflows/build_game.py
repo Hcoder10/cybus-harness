@@ -145,6 +145,8 @@ _GUI_NEW = re.compile(r'Instance\.new\(\s*"(Frame|TextLabel|TextButton|ImageLabe
 _PART_NEW = re.compile(r'Instance\.new\(\s*"(Part|WedgePart|CornerWedgePart|TrussPart)"')
 _LIGHT_WRITE = re.compile(r'Lighting\.(ClockTime|Brightness|Ambient|OutdoorAmbient|ExposureCompensation)\s*=(?!=)')
 _UI_ALIAS = re.compile(r'local\s+(\w+)\s*=[^\n]*UIKit')
+_MODULE_API = re.compile(r'\b[A-Z]\w*[.:]\w+\s*\(')
+_SCRIPT_RETURNS = re.compile(r'\n\s*return\s+[A-Za-z_]\w*\s*$')
 
 
 def _uikit_calls(src: str) -> int:
@@ -161,6 +163,10 @@ def kit_problems(srcs: dict[str, str]) -> dict[str, list[str]]:
         probs = []
         if "/Kit/" in path:
             continue
+        if re.search(r"\.(server|client)\.luau$", path) and _SCRIPT_RETURNS.search(src.rstrip()):
+            probs.append("this Script ends with `return <module>`: a Script/LocalScript cannot be required, so nothing ever "
+                         "calls its functions and none of it runs (live: a whole world never built). Call them here at "
+                         "the end (e.g. `M.build()`), or turn the file into a ModuleScript the entry script requires")
         gui = len(_GUI_NEW.findall(src))
         if gui >= 10 and _uikit_calls(src) * 2 < gui:
             probs.append(f"{gui} hand-made GUI objects and {_uikit_calls(src)} UIKit calls: build HUD/menu widgets from "
@@ -288,6 +294,18 @@ def normalize_arch(arch: dict, max_items: int) -> tuple[dict, list[str]]:
             notes.append(f"dropped {p}: provided by the harness")
             continue
         files[p] = {**f, "path": p}
+    # A Script/LocalScript whose API is module functions (live, Starbloom: World.server.luau "M.build() -> ...",
+    # required by Game.server) never runs: Scripts cannot be required. Make those ModuleScripts.
+    renamed: dict[str, str] = {}
+    for p, f in list(files.items()):
+        api = str(f.get("api") or "")
+        if (re.search(r"\.(server|client)\.luau$", p) and _MODULE_API.search(api)
+                and not re.search(r"entry|self-running|nothing requires", api, re.I)):
+            q = re.sub(r"\.(server|client)\.luau$", ".luau", p)
+            if q not in files:
+                files[q] = {**files.pop(p), "path": q}
+                renamed[p] = q
+                notes.append(f"{p} has a module API ({api[:60]}); made it a ModuleScript {q}")
     owner: dict[str, str] = {}
     items, seen_ids = [], set()
     for it in (arch.get("items") or [])[:max_items]:
@@ -302,6 +320,7 @@ def normalize_arch(arch: dict, max_items: int) -> tuple[dict, list[str]]:
             except ValueError as e:
                 notes.append(f"item {iid}: dropped file {raw!r}: {e}")
                 continue
+            p = renamed.get(p, p)
             if p in HARNESS_OWNED or p.startswith("ReplicatedStorage/Kit/"):
                 continue
             if p in owner:
