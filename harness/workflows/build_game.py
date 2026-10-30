@@ -56,7 +56,7 @@ class BuildConfig:
     repair_rounds: int = 2              # fix -> recapture -> rejudge rounds per item
     polish_rounds: int = 2              # whole-game panel rounds
     builder_steps: int = 28             # hard cap on one builder agent's tool steps
-    max_items: int = 16
+    max_items: int = int(os.environ.get("HARNESS_MAX_ITEMS", "16"))
     plan_critique: bool = True
     reference_board: bool = True
     integrate: bool = True
