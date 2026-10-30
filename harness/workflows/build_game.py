@@ -144,6 +144,13 @@ READ_LOCK = int(os.environ.get("HARNESS_READ_LOCK", "6"))   # reads in a row bef
 _GUI_NEW = re.compile(r'Instance\.new\(\s*"(Frame|TextLabel|TextButton|ImageLabel|ImageButton|UIStroke|UIGradient)"')
 _PART_NEW = re.compile(r'Instance\.new\(\s*"(Part|WedgePart|CornerWedgePart|TrussPart)"')
 _LIGHT_WRITE = re.compile(r'Lighting\.(ClockTime|Brightness|Ambient|OutdoorAmbient|ExposureCompensation)\s*=(?!=)')
+_UI_ALIAS = re.compile(r'local\s+(\w+)\s*=[^\n]*UIKit')
+
+
+def _uikit_calls(src: str) -> int:
+    """Calls into UIKit through any local it is bound to (live: a HUD required UIKit, then hand-built 20 widgets)."""
+    names = {"UIKit", *_UI_ALIAS.findall(src)}
+    return len(re.findall(r'\b(?:' + "|".join(map(re.escape, names)) + r')[.:]\w+\(', src))
 
 
 def kit_problems(srcs: dict[str, str]) -> dict[str, list[str]]:
@@ -155,9 +162,10 @@ def kit_problems(srcs: dict[str, str]) -> dict[str, list[str]]:
         if "/Kit/" in path:
             continue
         gui = len(_GUI_NEW.findall(src))
-        if gui >= 10 and "UIKit" not in src:
-            probs.append(f"{gui} hand-made GUI objects and no UIKit: build HUD/menu widgets from Kit.UIKit (UI.theme(...) then "
-                         "UI.counter / bar / banner / timer / panel / button ...); they animate and match the theme")
+        if gui >= 10 and _uikit_calls(src) * 2 < gui:
+            probs.append(f"{gui} hand-made GUI objects and {_uikit_calls(src)} UIKit calls: build HUD/menu widgets from "
+                         "Kit.UIKit (UI.theme(...) then UI.counter / bar / banner / timer / panel / button ...); they "
+                         "animate and match the theme. Hand-make only what UIKit has no component for")
         parts = len(_PART_NEW.findall(src))
         if parts >= 12 and not any(k in src for k in ("WorldKit", "PropKit", "LookKit")):
             probs.append(f"{parts} hand-placed Part constructors and no WorldKit/WorldKit2/PropKit: build terrain, "
