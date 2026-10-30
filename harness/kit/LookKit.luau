@@ -392,9 +392,10 @@ function LookKit.apply(look, overrides)
 	Lighting.FogStart = 0
 
 	-- remove leftovers that fight the look (another game's Sky / second Atmosphere)
+	-- and hand-made post effects (live: a builder's own orange "grade" survived every re-apply)
+	local keep = { KitSky = true, Atmosphere = true, KitBloom = true, KitGrade = true, KitSunRays = true }
 	for _, ch in ipairs(Lighting:GetChildren()) do
-		local keep = { KitSky = true, Atmosphere = true }
-		if (ch:IsA("Sky") or ch:IsA("Atmosphere")) and not keep[ch.Name] then
+		if (ch:IsA("Sky") or ch:IsA("Atmosphere") or ch:IsA("PostEffect")) and not keep[ch.Name] then
 			ch:Destroy()
 		end
 	end

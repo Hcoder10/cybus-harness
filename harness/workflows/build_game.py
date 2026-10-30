@@ -472,6 +472,19 @@ class Build:
                 return ToolResult(text="REFUSED (nothing ran): Atmosphere Density above 0.35 or Haze above 2.5 fogs the "
                                        "world out of every camera. Keep the look preset's atmosphere (LookKit.apply / "
                                        "WorldKit.lighting); tint with their options instead.")
+            # The look is locked to the kit (live: hand "grades" tinted a whole world orange and hid its islands in
+            # haze, round after round). Only LookKit.apply / WorldKit.lighting / skyboxes change it.
+            if (re.search(r"\bLighting\s*\.\s*\w+\s*=(?!=)", code)
+                    or re.search(r'Instance\.new\(\s*"(Atmosphere|ColorCorrectionEffect|BloomEffect|SunRaysEffect|'
+                                 r'DepthOfFieldEffect)"', code)
+                    or re.search(r"\b(TintColor|Saturation|Contrast|Decay|Glare|Haze|Density|ExposureCompensation|"
+                                 r"ClockTime|OutdoorAmbient|Ambient|ColorShift_Top|ColorShift_Bottom|"
+                                 r"EnvironmentDiffuseScale|EnvironmentSpecularScale)\s*=(?!=)", code)):
+                return ToolResult(text="REFUSED (nothing ran): the look is locked to the kit's tuned presets. Change it "
+                                       "only with LookKit.apply(look, {palette = {...}}), WorldKit.lighting(mood, "
+                                       "{sky, sun, strength}) or a skybox (generate_skybox / LookKit.skybox). Never "
+                                       "write Lighting, Atmosphere, ColorCorrection, Bloom or SunRays properties "
+                                       "yourself: calling LookKit.apply again resets them.")
             sculpt = len(re.findall(r":Fill(Block|Ball|Cylinder|Wedge|Region)\s*\(", code))
             if sculpt >= 2 and not re.search(r"WorldKit2?\s*\.|\bW2?\s*\.\s*(biome|island|archipelago|hill|rock|"
                                               r"platformingCourse|obby|arena|town|room|raceCourse)", code):
