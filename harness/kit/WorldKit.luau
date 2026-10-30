@@ -166,6 +166,22 @@ function WorldKit.lighting(mood, tint)
 	local clouds = terrain:FindFirstChildOfClass("Clouds") or Instance.new("Clouds")
 	for prop, v in pairs(p.clouds) do clouds[prop] = v end
 	clouds.Parent = terrain
+	-- Live: games call the preset and then write their style token's ClockTime 16.5 right after it, which renders as
+	-- flat noon haze. For the first seconds after a preset, a "late afternoon" write is read as "golden" and kept
+	-- golden; a day-cycle that moves the clock later is left alone.
+	local want = p.ClockTime
+	local guardUntil = os.clock() + 20
+	local conn
+	conn = Lighting:GetPropertyChangedSignal("ClockTime"):Connect(function()
+		if os.clock() > guardUntil then
+			conn:Disconnect()
+			return
+		end
+		local t = Lighting.ClockTime
+		if t >= 15.5 and t < 17.4 and math.abs(t - want) > 0.05 then
+			Lighting.ClockTime = want
+		end
+	end)
 	-- Other games' leftovers fight the preset: an old Sky with a fixed skybox, or a second Atmosphere.
 	for _, ch in ipairs(Lighting:GetChildren()) do
 		if ch:IsA("Atmosphere") and ch ~= atm then ch:Destroy() end

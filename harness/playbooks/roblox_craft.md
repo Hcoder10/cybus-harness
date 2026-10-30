@@ -70,6 +70,10 @@ techniques, not a style.
   `bridge` / `rock` to dress it, then your own signature pieces (the landmark, gameplay objects) from parts on top.
   Its presets and terrain are tested to look right; hand-written geometry and lighting values were not (live: a
   "golden hour" at ClockTime 16.5 rendered as flat noon haze, and hand-made MeshParts rendered as nothing).
+- Land is `WorldKit.island` (terrain), never Part cylinders. A Part with `Shape = Cylinder` lies along its X
+  axis: standing one up needs `CFrame.Angles(0, 0, math.rad(90))` (live: every "island" came out a sideways log).
+- After `WorldKit.lighting(...)` do not set `Lighting.ClockTime` / Brightness / Ambient yourself: the preset's
+  values are the look. Change the mood by calling `WorldKit.lighting` again with another mood.
 - In Studio edit mode set `Lighting.Technology` (Future for local light shadows), `ClockTime`,
   `GeographicLatitude`, `Brightness`, `Ambient` / `OutdoorAmbient`, `EnvironmentDiffuseScale` /
   `EnvironmentSpecularScale`, plus `Atmosphere` (Density, Offset, Color, Decay, Glare, Haze), a `Sky`,
