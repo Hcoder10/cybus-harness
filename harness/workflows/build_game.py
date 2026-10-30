@@ -280,6 +280,18 @@ def normalize_arch(arch: dict, max_items: int) -> tuple[dict, list[str]]:
     ids = {i["id"] for i in items}
     for it in items:
         it["depends_on"] = [d for d in (it.get("depends_on") or []) if d in ids and d != it["id"]]
+    # World first (live, Lantern Isles: glider, camera and HUD were captured and judged on the empty baseplate
+    # because the world item ran in parallel with them, so their repair rounds chased "there is no world"). World-art
+    # items start first with no dependencies; every item judged on what the player sees waits for them.
+    world = [i["id"] for i in items if i["aspect"] == "world_art"]
+    if world and os.environ.get("HARNESS_WORLD_FIRST", "1") != "0":
+        visual = {"camera", "vfx", "hud", "ui_menus", "animation", "game_feel", "cinematics", "lighting"}
+        for it in items:
+            if it["id"] in world:
+                it["depends_on"] = []
+            elif it["aspect"] in visual or any(str(f).startswith(("StarterPlayer", "StarterGui")) for f in it["files"]):
+                it["depends_on"] = sorted(set(it["depends_on"]) | set(world))
+        items.sort(key=lambda i: i["id"] not in world)
     unowned = [p for p in files if p not in owner]
     for p in unowned:
         notes.append(f"file {p} has no owning item; dropped")
