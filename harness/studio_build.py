@@ -148,13 +148,15 @@ class StudioBuild:
             return
         async with self.stage.lock:
             await self._sync()
-            probe = await self._exec(f"return workspace:FindFirstChild('{ROOT}') and #workspace.{ROOT}:GetChildren() or 0")
-            if str(probe.get("result")) not in ("0", "nil", ""):
+            # A chunk counter, not a part count: a terrain-only world has an empty folder (live: a resume skipped it).
+            probe = await self._exec("return workspace:GetAttribute('StudioBuildChunks') or 0")
+            if str(probe.get("result")) == str(len(chunks)):
                 return                              # this Studio already holds the world (same session)
             for c in chunks:
                 r = await self._exec(c["code"])
                 if not r.get("ok"):
                     log.warning("studio_build replay chunk %s failed: %s", c.get("note"), r.get("result"))
+            await self._exec(f"workspace:SetAttribute('StudioBuildChunks', {len(chunks)})")
 
     async def run(self, code: str, note: str = "") -> dict:
         await self.ensure()
@@ -164,6 +166,8 @@ class StudioBuild:
         if r.get("ok"):
             with self.log_path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps({"t": time.time(), "note": note, "code": code}, ensure_ascii=False) + "\n")
+            async with self.stage.lock:
+                await self._exec(f"workspace:SetAttribute('StudioBuildChunks', {len(self.chunks())})")
         return r
 
     async def view(self, views: list[dict] | None, label: str, settle: float = 2.5) -> tuple[list[bytes], list[str], dict, list[str]]:

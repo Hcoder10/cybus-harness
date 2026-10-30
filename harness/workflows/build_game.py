@@ -1512,6 +1512,7 @@ async def run_build(idea: dict, run_dir: Path, *, cfg: BuildConfig | None = None
         if stage is not None and os.environ.get("HARNESS_STUDIO_BUILD", "1") != "0":
             from harness.studio_build import StudioBuild
             build.studio = StudioBuild(stage, run_dir, ws)
+            await build.studio.ensure()         # a resumed run's captures must see the world it built in Studio
         report = await build.run(idea, evidence_plan)
         final = run_dir / "place" / "final.rbxlx"
         if final.exists():
