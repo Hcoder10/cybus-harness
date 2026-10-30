@@ -81,7 +81,8 @@ KIT_API = """ReplicatedStorage.Kit (require these; never copy or edit them):
   side=Enum.Material.Rock, floating=true}) -> {top=Vector3 walkable centre, radius, position}; WorldKit.scatter(island,
   {trees, rocks, lamps, style, leaf}); WorldKit.tree({position, height, style, leaf, trunk}); WorldKit.lamp({position, color});
   WorldKit.lantern({position, size, color, glow}); WorldKit.bridge({from, to, width, style="planks"|"glow"}); WorldKit.rock({position,
-  size}); WorldKit.hill({position, radius}); WorldKit.folder(name). Terrain is smooth (never voxel cubes); props are chunky parts.
+  size}); WorldKit.hill({position, radius}); WorldKit.folder(name); WorldKit.claimSpawn(pos, force) (the first island
+  takes the spawn automatically; island{spawn=true} forces it -- players must spawn ON the world, never in the void). Terrain is smooth (never voxel cubes); props are chunky parts.
   Colours: Color3 or "#RRGGBB" (use Tokens.color). Never write mesh code or empty MeshParts: an empty MeshPart is invisible.
 - Debug.register(name, fn, description) (client or server): a command the test harness can run in Studio to show
   your screen / trigger your moment; Debug.event(name, data): log a gameplay event for playtests.

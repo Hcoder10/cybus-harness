@@ -246,7 +246,36 @@ function WorldKit.island(opts)
 		local d = rand:NextNumber(0.2, 0.7) * r
 		terrain:FillBall(pos + Vector3.new(math.cos(a) * d, h * 0.25, math.sin(a) * d), r * rand:NextNumber(0.25, 0.4), top)
 	end
-	return { position = pos, radius = r, top = pos + Vector3.new(0, h * 0.42, 0) }
+	local info = { position = pos, radius = r, top = pos + Vector3.new(0, h * 0.42, 0) }
+	-- Live: games built their islands away from the origin and players spawned on the template's pad in the void.
+	-- The first island takes the spawn unless the game already moved it; spawn=true forces it.
+	WorldKit.claimSpawn(info.top, opts.spawn == true)
+	return info
+end
+
+-- WorldKit.claimSpawn(position, force): put the place's SpawnLocation (made if missing) on `position`. Without
+-- force it only moves a spawn that is still the untouched template pad at the origin.
+function WorldKit.claimSpawn(position, force)
+	local spawn = Workspace:FindFirstChildOfClass("SpawnLocation")
+	if spawn and not force and (spawn.Position.Magnitude > 4 or spawn:GetAttribute("KitSpawnClaimed")) then
+		return spawn
+	end
+	if not spawn then
+		spawn = Instance.new("SpawnLocation")
+		spawn.Parent = Workspace
+	end
+	spawn.Anchored = true
+	spawn.Size = Vector3.new(8, 1, 8)
+	spawn.Transparency = 1
+	spawn.CanCollide = true
+	spawn.Neutral = true
+	spawn.CFrame = CFrame.new(position + Vector3.new(0, 0.6, 0))
+	spawn:SetAttribute("KitSpawnClaimed", true)
+	local decal = spawn:FindFirstChildOfClass("Decal")
+	if decal then
+		decal:Destroy()
+	end
+	return spawn
 end
 
 -- WorldKit.hill / WorldKit.rock: terrain bumps for variety
