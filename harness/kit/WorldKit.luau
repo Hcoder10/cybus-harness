@@ -269,11 +269,22 @@ function WorldKit.claimSpawn(position, force)
 	spawn.Transparency = 1
 	spawn.CanCollide = true
 	spawn.Neutral = true
+	local old = spawn.Position
 	spawn.CFrame = CFrame.new(position + Vector3.new(0, 0.6, 0))
 	spawn:SetAttribute("KitSpawnClaimed", true)
 	local decal = spawn:FindFirstChildOfClass("Decal")
 	if decal then
 		decal:Destroy()
+	end
+	-- Characters spawn the moment play starts, before the world is built: move anyone still standing where the old
+	-- spawn was (or falling into the void) onto the new one.
+	local Players = game:GetService("Players")
+	for _, plr in ipairs(Players:GetPlayers()) do
+		local char = plr.Character
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		if root and ((root.Position - old).Magnitude < 40 or root.Position.Y < position.Y - 60) then
+			char:PivotTo(CFrame.new(position + Vector3.new(0, 4, 0)))
+		end
 	end
 	return spawn
 end
