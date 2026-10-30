@@ -100,6 +100,20 @@ end
 local function captureLogs(tag)
 	local KINDS = { [Enum.MessageType.MessageError] = "error", [Enum.MessageType.MessageWarning] = "warning",
 		[Enum.MessageType.MessageOutput] = "output", [Enum.MessageType.MessageInfo] = "info" }
+	-- Errors thrown before this connects (an entry script failing in its first frame) are only in the history:
+	-- replay it, or the judge and fixer never hear why the game is empty.
+	task.spawn(function()
+		pcall(function()
+			local history = LogService:GetLogHistory()
+			for i = math.max(1, #history - 200), #history do
+				local h = history[i]
+				if h and (h.messageType == Enum.MessageType.MessageError or h.messageType == Enum.MessageType.MessageWarning) then
+					push(logs, { t = os.clock(), kind = KINDS[h.messageType], text = string.sub(tostring(h.message), 1, 800),
+						side = tag }, MAX_LOGS)
+				end
+			end
+		end)
+	end)
 	LogService.MessageOut:Connect(function(message, kind)
 		if KINDS[kind] then
 			local entry = { t = os.clock(), kind = KINDS[kind], text = string.sub(message, 1, 800), side = tag }
