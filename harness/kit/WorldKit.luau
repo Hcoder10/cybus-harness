@@ -235,7 +235,10 @@ function WorldKit.island(opts)
 		local lr = r * (1 - 0.75 * t)
 		for _ = 1, 3 do
 			local off = Vector3.new(rand:NextNumber(-0.25, 0.25) * lr, 0, rand:NextNumber(-0.25, 0.25) * lr)
-			terrain:FillBall(pos + off - Vector3.new(0, h * 0.35 + t * r * 0.9, 0), lr * rand:NextNumber(0.55, 0.75), side)
+			-- Keep every ball's top under the walkable cap (live: a wide flat island, radius 30 / height 8, grew a
+			-- rock dome 15 studs over its own top and players spawned beside a boulder).
+			local br = lr * rand:NextNumber(0.55, 0.75)
+			terrain:FillBall(pos + off - Vector3.new(0, h * 0.3 + br * 0.85 + t * r * 0.6, 0), br, side)
 		end
 	end
 	-- flat-ish walkable top: a wide low cylinder, then a soft grass cap so edges round over

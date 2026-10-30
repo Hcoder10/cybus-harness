@@ -106,6 +106,33 @@ class StudioBuild:
                     pass
         return {"ok": False, "result": tidy(text)[:1500], "out": []}
 
+    async def _sync(self) -> None:
+        """Push changed files, then swap each pushed ModuleScript for a fresh copy: a plugin's require caches a module
+        by instance, so edit-mode code kept the OLD source after a sync (live: a kit fix never reached the builder)."""
+        synced = await self.stage.sync()
+        mods = [p.get("instance") for p in synced.get("pushed") or []
+                if isinstance(p, dict) and p.get("class") == "ModuleScript" and p.get("action") != "deleted"
+                and p.get("instance")]
+        if not mods:
+            return
+        paths = ", ".join(json.dumps(m) for m in mods)
+        await self.stage.edit(
+            "for _, path in ipairs({" + paths + "}) do
+"
+            "	local inst = game
+"
+            "	for _, n in ipairs(string.split(path, \".\")) do inst = inst and inst:FindFirstChild(n) end
+"
+            "	if inst and inst:IsA(\"ModuleScript\") then
+"
+            "		local parent, c = inst.Parent, inst:Clone()
+		inst:Destroy()
+		c.Parent = parent
+	end
+"
+            "end
+return true")
+
     async def ensure(self) -> None:
         """A relaunched Studio has a fresh place: replay the log (after the kit reached it)."""
         if self.replayed:
@@ -115,7 +142,7 @@ class StudioBuild:
         if not chunks:
             return
         async with self.stage.lock:
-            await self.stage.sync()
+            await self._sync()
             probe = await self._exec(f"return workspace:FindFirstChild('{ROOT}') and #workspace.{ROOT}:GetChildren() or 0")
             if str(probe.get("result")) not in ("0", "nil", ""):
                 return                              # this Studio already holds the world (same session)
@@ -127,7 +154,7 @@ class StudioBuild:
     async def run(self, code: str, note: str = "") -> dict:
         await self.ensure()
         async with self.stage.lock:
-            await self.stage.sync()                 # the builder's modules (and kit) are current in edit mode
+            await self._sync()                      # the builder's modules (and kit) are current in edit mode
             r = await self._exec(code)
         if r.get("ok"):
             with self.log_path.open("a", encoding="utf-8") as f:
