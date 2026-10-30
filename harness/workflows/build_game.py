@@ -138,6 +138,9 @@ CLIENT_CONTAINERS = ("StarterPlayer/StarterPlayerScripts/", "StarterPlayer/Start
 SERVER_CONTAINERS = ("ServerScriptService/", "Workspace/")
 
 
+READ_LOCK = int(os.environ.get("HARNESS_READ_LOCK", "6"))   # reads in a row before reading others' files is refused
+
+
 def arch_problems(arch: dict) -> list[str]:
     """Roblox placement mistakes that make code silently not run (checked before anyone builds on them)."""
     out = []
@@ -479,6 +482,14 @@ class Build:
             except (OSError, ValueError) as e:
                 return ToolResult(text=f"ERROR: {e}")
             key = f"{p}:{int(start_line)}"
+            # Live (Lantern Isles): a world builder read other items' files for its whole step budget, nudges and
+            # all, painted textures, never wrote World.luau, and submitted a summary claiming it had. A nudge is not
+            # enough: past this many reads in a row without a write, reading other items' files is refused.
+            if reads["since_write"] >= READ_LOCK and p not in owned:
+                return ToolResult(text=f"ERROR: reading is locked: {reads['since_write']} reads in a row without a "
+                                       f"write. Your brief has every file's API. Write your own files now "
+                                       f"({', '.join(sorted(can_write))}) with write_file / append_file; reading "
+                                       "unlocks after your next write.")
             read_counts[key] = read_counts.get(key, 0) + 1
             if read_counts[key] >= 3 and p not in owned:
                 api = next((f.get("api", "") for f in ws.arch.get("files", []) if f.get("path") == p), "")
