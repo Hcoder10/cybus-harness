@@ -44,6 +44,8 @@ HELP = f"""BUILD THE WORLD IN STUDIO (edit mode), not with a runtime script:
   WorldKit2.prop and PropKit for dressing. Never hand-sculpt terrain with FillBlock/FillBall/Part slabs: it reads as
   flat boxes (live: a builder abandoned the kit and its world became square grass slabs). If a kit call surprises you,
   change its options or position, don't replace it.
+- Your SCRIPT FILES still have to be written with write_file (the lookup module, entry scripts): write them as soon as
+  the first islands stand, then keep improving the world.
 - studio_view(views?): plays the game and shows you screenshots. With no views you get a survey: the player's own
   view, a high 3/4 overview, a side view and a top-down view of the whole world, plus runtime errors and a judge
   score against the concept art. Pass views=[{{"position":[x,y,z],"look_at":[x,y,z],"fov":60}}] to frame any

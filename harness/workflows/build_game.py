@@ -464,6 +464,22 @@ class Build:
         studio, n = self.studio, {"views": 0}
 
         async def studio_build(code: str, note: str = "") -> ToolResult:
+            # Hard rules (live, Starbloom): advice in the brief was not enough; the builder fogged the look twice and
+            # replaced the kit's islands with hand-sculpted terrain slabs. Refuse those chunks before they run.
+            dens = [float(x) for x in re.findall(r"\bDensity\s*=\s*([0-9.]+)", code)]
+            haze = [float(x) for x in re.findall(r"\bHaze\s*=\s*([0-9.]+)", code)]
+            if any(d > 0.35 for d in dens) or any(h > 2.5 for h in haze):
+                return ToolResult(text="REFUSED (nothing ran): Atmosphere Density above 0.35 or Haze above 2.5 fogs the "
+                                       "world out of every camera. Keep the look preset's atmosphere (LookKit.apply / "
+                                       "WorldKit.lighting); tint with their options instead.")
+            sculpt = len(re.findall(r":Fill(Block|Ball|Cylinder|Wedge|Region)\s*\(", code))
+            if sculpt >= 2 and not re.search(r"WorldKit2?\s*\.|\bW2?\s*\.\s*(biome|island|archipelago|hill|rock|"
+                                              r"platformingCourse|obby|arena|town|room|raceCourse)", code):
+                return ToolResult(text="REFUSED (nothing ran): hand-sculpted terrain (Terrain:Fill*) reads as flat boxes. "
+                                       "Build land with the kit: WorldKit2.biome(kind, {center, size}), "
+                                       "WorldKit.archipelago / WorldKit.island, WorldKit2.platformingCourse, then dress "
+                                       "with WorldKit2.prop / PropKit. Change their options or positions if a result "
+                                       "surprises you.")
             try:
                 r = await studio.run(code, note)
             except Exception as e:  # noqa: BLE001
