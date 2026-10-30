@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import logging
 import time
 from pathlib import Path
@@ -82,7 +83,7 @@ class StudioBuild:
                 pass
         return out
 
-    async def _exec(self, code: str, timeout_ms: int = 60000) -> dict:
+    async def _exec(self, code: str, timeout_ms: int = 30000) -> dict:
         wrapped = (PRELUDE + "local __out = {}\nlocal function print(...)\n\tlocal t = table.pack(...)\n"
                    "\tfor i = 1, t.n do t[i] = tostring(t[i]) end\n\ttable.insert(__out, table.concat(t, \" \"))\nend\n"
                    "local __ok, __res = pcall(function()\n" + code + "\nend)\n"
@@ -90,13 +91,20 @@ class StudioBuild:
                    "out = __out})")
         res = await self.stage.edit(wrapped, timeout_ms=timeout_ms)
         text = json.dumps(res, ensure_ascii=False)
+        # Errors name the whole guarded chunk ([string "if game.PlaceId ..."]:N:); report the builder's own line.
+        pre = wrapped.split(code, 1)[0].count("\n") + 2          # + Stage.edit's two guard lines
+
+        def tidy(msg: str) -> str:
+            return re.sub(r'\[string "[^\]]*"\]:(\d+):', lambda m: f"your line {int(m.group(1)) - pre}:", msg)
         for cand in _strings(res):
             if cand.startswith("{") and '"ok"' in cand:
                 try:
-                    return json.loads(cand)
+                    out = json.loads(cand)
+                    out["result"] = tidy(str(out.get("result")))
+                    return out
                 except ValueError:
                     pass
-        return {"ok": False, "result": text[:1500], "out": []}
+        return {"ok": False, "result": tidy(text)[:1500], "out": []}
 
     async def ensure(self) -> None:
         """A relaunched Studio has a fresh place: replay the log (after the kit reached it)."""
