@@ -196,12 +196,12 @@ def arch_fix_brief(arch: dict, problems: list[str]) -> str:
 def shared_context(plan: dict, style_md: str, arch: dict) -> str:
     """What every builder of this game reads, identical across items and rounds, so it forms one long prefix the
     model server caches (put nothing item-specific in here)."""
-    from harness.kit import KIT_API
+    from harness.kit import kit_api
     files = [{"path": f["path"], "api": f["api"]} for f in arch.get("files", [])]
     return (f"GAME\n{plan.get('title', '')}: {plan.get('fantasy', '')}\nCore loop: {' -> '.join(plan.get('core_loop', []))}\n"
             f"Signature moment: {plan.get('signature_moment', '')}\n\n"
             f"STYLE GUIDE\n{style_md[:5000]}\n\n"
-            f"KIT (already in the game)\n{KIT_API}\n\n"
+            f"KIT (already in the game)\n{kit_api()}\n\n"
             f"EVERY FILE IN THE GAME AND ITS API (edit only the ones listed as yours below; call the others)\n"
             f"{compact_json(files, 6000)}\n\n"
             f"{PATHS_RULE}\n\n"

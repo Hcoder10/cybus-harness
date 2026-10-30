@@ -32,7 +32,7 @@ from typing import Any
 
 from harness import prompts, schemas
 from harness.judge import Verdict, judge, panel
-from harness.kit import KIT_API, kit_files
+from harness.kit import KIT_API, kit_api, kit_files
 from harness.llm import image_part, text_part
 from harness.tokens import build_tokens, lighting_script
 from harness.tools.base import Tool, ToolResult
@@ -753,7 +753,7 @@ class Build:
             self.items = self.arch["items"]
             wf.log(f"architecture: reusing architecture.json from this run ({len(self.items)} items)")
             return
-        arch = await wf.agent(prompts.arch_brief(self.plan, self.style_md, KIT_API), role=self.architect,
+        arch = await wf.agent(prompts.arch_brief(self.plan, self.style_md, kit_api()), role=self.architect,
                               system=prompts.LEAD_SYSTEM, schema=schemas.ARCH, label="architecture")
         if not isinstance(arch, dict):
             raise RuntimeError("the lead produced no architecture")
