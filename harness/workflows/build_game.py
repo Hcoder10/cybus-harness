@@ -154,6 +154,7 @@ def arch_problems(arch: dict) -> list[str]:
         except ValueError as e:
             out.append(f"{path}: {e}")
             continue
+        path = info.rel                  # "src/" prefix stripped: the containers are checked on the real location
         if info.class_name == "LocalScript" and not path.startswith(CLIENT_CONTAINERS):
             out.append(f"{path}: a LocalScript only runs under StarterPlayer/StarterPlayerScripts, "
                        "StarterCharacterScripts, StarterGui or ReplicatedFirst; move it there, or make it a ModuleScript "
