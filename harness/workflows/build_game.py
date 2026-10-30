@@ -669,6 +669,11 @@ class Build:
         shots = (self.style.get("reference_shots") or [])[:4]
         ref_dir = self.run_dir / "refs"
         ref_dir.mkdir(exist_ok=True)
+        existing = sorted(ref_dir.glob("*.png"))
+        if existing:                              # resumed (or seeded) run: keep the board the plan was judged on
+            self.refs = {p.stem: p.read_bytes() for p in existing}
+            self.wf.log(f"reference board: {len(self.refs)} frame(s) (kept)")
+            return
 
         async def one(shot: dict) -> None:
             name = re.sub(r"[^a-z0-9_]+", "_", shot.get("name", "ref").lower()).strip("_") or "ref"
