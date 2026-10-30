@@ -472,8 +472,17 @@ class Build:
             if not r.get("ok"):
                 return ToolResult(text=f"ERROR (this chunk was not kept; instances it made before the error may "
                                        f"remain): {r.get('result')}\n{out}")
+            warn = ""
+            # Live (Starbloom): a builder "tuned" the look preset to Atmosphere Density 0.45 / Haze 4 and fogged the
+            # whole world out of every camera. Flag preset overrides the way the script gate does.
+            dens = [float(x) for x in re.findall(r"\bDensity\s*=\s*([0-9.]+)", code)]
+            haze = [float(x) for x in re.findall(r"\bHaze\s*=\s*([0-9.]+)", code)]
+            if any(d > 0.35 for d in dens) or any(h > 2.5 for h in haze) or _LIGHT_WRITE.search(code):
+                warn = ("\nWARNING: this overrides the look preset's tuned lighting/atmosphere (heavy Density/Haze "
+                        "fogs the world out of view; Lighting writes fight LookKit). Prefer LookKit.apply / "
+                        "WorldKit.lighting options; check the survey views for fog and blown-out colour.")
             return ToolResult(text=f"ok, built in Studio{' (' + note + ')' if note else ''}. returned: "
-                                   f"{r.get('result')}\n{out}\nNow LOOK at it with studio_view.")
+                                   f"{r.get('result')}\n{out}{warn}\nNow LOOK at it with studio_view.")
 
         async def studio_view(views: list | None = None, judge_it: bool = True) -> ToolResult:
             n["views"] += 1
