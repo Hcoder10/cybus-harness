@@ -330,7 +330,7 @@ end
 -- trees in clusters at the rim, away from exits and the spawn; small props around each cluster; flower patches
 local function dress(L, isl, exits, keepClear)
 	local r, d = L.r, L.dress
-	local nClusters = math.clamp(math.floor(isl.radius / 10), 3, 5)
+	local nClusters = math.clamp(math.floor(isl.radius / 8), 3, 6)
 	local placed = {}
 	local function free(p, gap)
 		for _, q in ipairs(placed) do
@@ -439,7 +439,16 @@ end
 
 local function finish(L, spawnPos)
 	local info = L.info
+	-- Place the spawn exactly where the layout says (claimSpawn's own raycast hits STALE terrain right after a
+	-- rebuild: live in edit mode, a meadow rebuilt over a sky level put the spawn 77 studs up in the air).
 	local spawn = WK2.claimSpawn(spawnPos, true)
+	spawn.CFrame = CF(spawnPos + V3(0, 0.6, 0))
+	local Players = game:GetService("Players")
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr.Character then
+			plr.Character:PivotTo(CF(spawnPos + V3(0, 4, 0)))
+		end
+	end
 	info.spawn = spawn.Position + V3(0, 3, 0)
 	tag(spawn, "KitSpawn")
 	local lo, hi = V3(math.huge, math.huge, math.huge), V3(-math.huge, -math.huge, -math.huge)
@@ -519,7 +528,7 @@ local function islandsLevel(L, floating)
 	local first = isls[2]
 	local toFirst = ((first.center - hubCenter) * FLAT).Unit
 	local spawnXZ = hubCenter - toFirst * hubR * 0.25
-	local spawnG = WK2.groundAt(spawnXZ.X, spawnXZ.Z) or (spawnXZ + V3(0, 0.5, 0))
+	local spawnG = V3(spawnXZ.X, hubCenter.Y, spawnXZ.Z) -- the hub top is flat at hubCenter.Y by construction
 	-- paths
 	for i = 1, #isls - 1 do
 		local bow = (i % 2 == 0 and 1 or -1) * 0.12
@@ -607,7 +616,7 @@ local function islandsLevel(L, floating)
 			for _, m in ipairs(WK2.populate({ center = V3(0, 0, 0), size = 600 * S, kinds = set[1], count = set[2],
 				clusters = 12, seed = L.seed + set[2], parent = L.dressF, palette = L.o.palette })) do
 				local p = m:GetPivot().Position
-				local bad = p.Magnitude > 330 * S
+				local bad = p.Magnitude > 330 * S or (p.Y > 3 and p.Magnitude < 240 * S) -- stale-raycast guard
 				for _, b in ipairs(blockers) do
 					if ((b[1] - p) * FLAT).Magnitude < b[2] then bad = true; break end
 				end
