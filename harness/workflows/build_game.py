@@ -398,6 +398,7 @@ class Build:
         from harness.tools.audio import AudioSearch
         self.audio = AudioSearch(self.run_dir / "audio_cache.json")
         self.extra_tools: list[Tool] = []          # e.g. paint_texture / list_textures from harness.tools.art
+        self.studio = None                          # harness.studio_build.StudioBuild: build in edit mode, look, iterate
         self.item_lock: dict[str, asyncio.Lock] = {}
         (self.run_dir / "verdicts").mkdir(parents=True, exist_ok=True)
         # Revision rounds apply a given list of changes: thinking adds little and can run away (Qwen3.8 spent a whole
@@ -453,6 +454,70 @@ class Build:
                         out[iid].append(text[:400])
                     break
         return out
+
+    def uses_studio(self, item: dict) -> bool:
+        aspects = os.environ.get("HARNESS_STUDIO_ASPECTS", "world_art").split(",")
+        return self.studio is not None and item.get("aspect") in aspects
+
+    def studio_tools(self, item: dict) -> list[Tool]:
+        from harness.studio_build import HELP
+        studio, n = self.studio, {"views": 0}
+
+        async def studio_build(code: str, note: str = "") -> ToolResult:
+            try:
+                r = await studio.run(code, note)
+            except Exception as e:  # noqa: BLE001
+                return ToolResult(text=f"ERROR: Studio did not run it: {e}")
+            out = "\n".join(r.get("out") or [])[-3000:]
+            if not r.get("ok"):
+                return ToolResult(text=f"ERROR (this chunk was not kept; instances it made before the error may "
+                                       f"remain): {r.get('result')}\n{out}")
+            return ToolResult(text=f"ok, built in Studio{' (' + note + ')' if note else ''}. returned: "
+                                   f"{r.get('result')}\n{out}\nNow LOOK at it with studio_view.")
+
+        async def studio_view(views: list | None = None, judge_it: bool = True) -> ToolResult:
+            n["views"] += 1
+            try:
+                images, labels, bounds, errors = await studio.view(views, f"{item['id']}_look{n['views']}")
+            except Exception as e:  # noqa: BLE001
+                return ToolResult(text=f"ERROR: could not view the game: {e}")
+            if not images:
+                return ToolResult(text="ERROR: no screenshots came back")
+            sheet = contact_sheet(images, cols=2, width=1600, labels=labels)
+            text = [f"{len(images)} view(s): " + "; ".join(labels),
+                    f"world bounds: min {bounds.get('min')} max {bounds.get('max')}"]
+            if errors:
+                text.append("RUNTIME ERRORS/WARNINGS:\n" + "\n".join(errors))
+            if judge_it:
+                cap = item.get("capture") or {}
+                v = await judge(self.judge_llm, item["aspect"], images,
+                                intent=f"{item.get('title', '')}: {cap.get('description', '')}",
+                                style=self.style_md, target=self.targets_for(item["aspect"]),
+                                threshold=self.cfg.threshold)
+                text.append(f"JUDGE: {v.score:.1f}/10 ({'passes' if v.passed else 'not there yet'})")
+                text.append(v.fix_list(7))
+            return ToolResult(text="\n".join(text), images=[sheet])
+
+        s = {"type": "object", "additionalProperties": False}
+        v3 = {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3}
+        return [
+            Tool("studio_build", "Run Luau in Roblox Studio's EDIT mode to build the world for real (saved in the "
+                                 "place). " + HELP,
+                 {**s, "required": ["code"], "properties": {
+                     "code": {"type": "string", "description": "Luau; Kit and World are predefined; print/return "
+                                                               "come back to you"},
+                     "note": {"type": "string", "description": "what this step builds"}}},
+                 studio_build, mutating=True),
+            Tool("studio_view", "Play the game and look at the world: no views = the player's view plus an overview, "
+                                "side and top-down survey, with runtime errors and a judge score vs the concept art. "
+                                "Or pass your own camera views to inspect any spot.",
+                 {**s, "properties": {
+                     "views": {"type": "array", "maxItems": 6, "items": {**s, "required": ["position", "look_at"],
+                               "properties": {"name": {"type": "string"}, "position": v3, "look_at": v3,
+                                              "fov": {"type": "number"}}}},
+                     "judge_it": {"type": "boolean", "description": "score it against the concept art (default true)"}}},
+                 studio_view),
+        ]
 
     def targets_for(self, aspect: str) -> list[bytes]:
         pick = {"ui_menus": ("title", "menu", "shop", "results"), "hud": ("hud", "gameplay"),
@@ -646,6 +711,8 @@ class Build:
                                "module.", {**s, "properties": {}}, check_code),
         ]
         tools += self.audio.tools() + [t for t in self.extra_tools if self.tool_fits(t.name, item["aspect"])]
+        if self.uses_studio(item):
+            tools += self.studio_tools(item)
         if self.imagegen is not None and self.imagegen.enabled and self.assets is not None:
             async def generate_image(name: str, prompt: str, kind: str = "icon") -> ToolResult:
                 try:
@@ -913,8 +980,11 @@ class Build:
 
     async def build_agent(self, item: dict, brief: str | list[dict], label: str, system: str) -> dict | None:
         before = {p: _digest(s) for p, s in self.owned_sources(item).items()}
+        steps = self.cfg.builder_steps
+        if self.uses_studio(item):              # build, look, fix, look again: a looking loop needs room
+            steps = max(steps, int(os.environ.get("HARNESS_STUDIO_STEPS", "50")))
         rep = await self.wf.agent(brief, role="builder", system=system, tools=self.builder_tools(item),
-                                  schema=schemas.REPORT, label=label, max_steps=self.cfg.builder_steps)
+                                  schema=schemas.REPORT, label=label, max_steps=steps)
         after = {p: _digest(s) for p, s in self.owned_sources(item).items()}
         # One direct retry when the agent ended without changing anything AND something of its is still a stub.
         # (A builder resuming over files an earlier attempt already wrote may rightly change nothing.)
@@ -1069,8 +1139,11 @@ class Build:
             if await self.gate(item, f"gate:{item['id']}") or missing or done.get("digests") != current:
                 self._mark_built(item, rep)
         else:
-            brief = prompts.item_brief(item, self.plan, self.style_md, self.arch, self.owned_sources(item),
-                                       extra=("GENERATED ART SO FAR\n" + self.assets.listing()) if self.assets else "")
+            extra = ("GENERATED ART SO FAR\n" + self.assets.listing()) if self.assets else ""
+            if self.uses_studio(item):
+                from harness.studio_build import HELP
+                extra = HELP + "\n" + extra
+            brief = prompts.item_brief(item, self.plan, self.style_md, self.arch, self.owned_sources(item), extra=extra)
             rep = await self.build_agent(item, brief, f"build:{item['id']}", prompts.BUILDER_SYSTEM)
             if rep is not None:                 # only a build that reported is done; a failed one resumes
                 self._mark_built(item, rep)
@@ -1301,12 +1374,30 @@ class Build:
             for it in self.items:
                 v = await self.assess(it, caps[it["id"]], 99)
                 final[it["id"]] = {"aspect": it["aspect"], "score": v.score, "passed": v.passed}
-        try:                                   # the bridge cannot save places: build the final one with rojo
-            from harness.place import build_place
-            build_place(self.ws.root, self.run_dir / "place" / "final.rbxlx", self.plan.get("title") or "game",
-                        style=self.style)
-        except Exception as e:  # noqa: BLE001
-            self.wf.log(f"could not build the final place: {e}")
+        saved = False
+        if self.studio is not None and self.studio.chunks():
+            # The world was built in Studio's edit mode: save Studio's own place (it holds those instances and the
+            # synced scripts). The fallback replay script is a no-op whenever the saved place has the world.
+            try:
+                self.studio.write_fallback()
+                async with self.stage.lock:
+                    await self.stage.sync()
+                    studio_place = self.run_dir / "place" / f"{self.stage.run_id}.rbxlx"
+                    saved = await self.studio.save_place(studio_place)
+                if saved:
+                    import shutil
+                    shutil.copyfile(studio_place, self.run_dir / "place" / "final.rbxlx")
+                self.wf.log("final place: " + ("saved from Studio (edit-mode world included)" if saved else
+                            "Studio save failed; rojo build with the edit-mode world as a runtime fallback"))
+            except Exception as e:  # noqa: BLE001
+                self.wf.log(f"could not save the Studio place: {e}")
+        if not saved:
+            try:                               # the bridge cannot save places: build the final one with rojo
+                from harness.place import build_place
+                build_place(self.ws.root, self.run_dir / "place" / "final.rbxlx", self.plan.get("title") or "game",
+                            style=self.style)
+            except Exception as e:  # noqa: BLE001
+                self.wf.log(f"could not build the final place: {e}")
         by_aspect: dict[str, list[float]] = {}
         for r in final.values():
             by_aspect.setdefault(r["aspect"], []).append(r["score"])
@@ -1393,6 +1484,9 @@ async def run_build(idea: dict, run_dir: Path, *, cfg: BuildConfig | None = None
             import importlib
             mod, _, fn = spec.strip().partition(":")
             build.extra_tools = build.extra_tools + list(getattr(importlib.import_module(mod), fn)(build, stage, run_dir))
+        if stage is not None and os.environ.get("HARNESS_STUDIO_BUILD", "1") != "0":
+            from harness.studio_build import StudioBuild
+            build.studio = StudioBuild(stage, run_dir, ws)
         report = await build.run(idea, evidence_plan)
         final = run_dir / "place" / "final.rbxlx"
         if final.exists():

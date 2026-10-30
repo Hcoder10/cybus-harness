@@ -177,18 +177,53 @@ local function builtinsClient()
 		return { viewport = { cam.ViewportSize.X, cam.ViewportSize.Y } }
 	end, "full-screen magenta frame for locating the viewport in screenshots")
 	Debug.register("__camera", function(x, y, z, lx, ly, lz, fov)
+		-- Held every frame after every other camera writer (CameraRig / ControllerKit rewrite it each frame).
 		local cam = workspace.CurrentCamera
+		pcall(RunService.UnbindFromRenderStep, RunService, "__DebugCam")
 		if x == nil then
 			cam.CameraType = Enum.CameraType.Custom
 			return "camera reset"
 		end
-		cam.CameraType = Enum.CameraType.Scriptable
-		cam.CFrame = CFrame.lookAt(Vector3.new(x, y, z), Vector3.new(lx, ly, lz))
-		if fov then
-			cam.FieldOfView = fov
+		local cf = CFrame.lookAt(Vector3.new(x, y, z), Vector3.new(lx, ly, lz))
+		local function hold()
+			cam.CameraType = Enum.CameraType.Scriptable
+			cam.CFrame = cf
+			if fov then
+				cam.FieldOfView = fov
+			end
 		end
+		hold()
+		RunService:BindToRenderStep("__DebugCam", Enum.RenderPriority.Last.Value + 50, hold)
 		return "camera set"
 	end, "place the camera: x,y,z, lookX,lookY,lookZ, fov; no args resets")
+	Debug.register("__bounds", function()
+		-- Extent of the built world (parts and terrain props), for framing survey views.
+		local root = workspace:FindFirstChild("StudioWorld")
+		if not root or #root:GetChildren() == 0 then
+			root = workspace
+		end
+		local chars = {}
+		for _, p in Players:GetPlayers() do
+			if p.Character then
+				chars[p.Character] = true
+			end
+		end
+		local lo, hi
+		for _, d in root:GetDescendants() do
+			if d:IsA("BasePart") and d.Transparency < 1 and d.Size.Magnitude < 600 and d.Name ~= "Baseplate" then
+				local m = d:FindFirstAncestorOfClass("Model")
+				if not (m and chars[m]) then
+					local p = d.Position
+					lo = lo and lo:Min(p) or p
+					hi = hi and hi:Max(p) or p
+				end
+			end
+		end
+		if not lo then
+			return { min = { -60, 0, -60 }, max = { 60, 40, 60 } }
+		end
+		return { min = { lo.X, lo.Y, lo.Z }, max = { hi.X, hi.Y, hi.Z } }
+	end, "bounding box of the built world (StudioWorld, else workspace)")
 	Debug.register("__move", function(x, z, seconds)
 		-- walk the local character: x/z relative to the camera (0, -1 = forward), for `seconds`
 		local player = Players.LocalPlayer
