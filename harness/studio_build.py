@@ -44,6 +44,10 @@ HELP = f"""BUILD THE WORLD IN STUDIO (edit mode), not with a runtime script:
   WorldKit2.prop and PropKit for dressing. Never hand-sculpt terrain with FillBlock/FillBall/Part slabs: it reads as
   flat boxes (live: a builder abandoned the kit and its world became square grass slabs). If a kit call surprises you,
   change its options or position, don't replace it.
+- SKY COLOUR: Lighting cannot paint the sky a specific colour (a plum dusk, a green alien sky). Use the
+  generate_skybox tool once for that, install the Sky it returns, and stop re-tuning Lighting (live: a builder
+  cleared and re-lit the world for a whole round chasing a "plum sky" the judge kept asking for). Never clear the
+  whole world to change the look: islands and props stay; change only what is wrong.
 - WorldKit.island / archipelago / hill, WorldKit2.biome and WorldKit.water build TERRAIN: no Parts appear in World
   or workspace for them (an empty folder is normal). Check them with studio_view, never by searching for parts or
   raycasting (live: builders spent whole rounds hunting "missing" islands that were on screen). Their return values
