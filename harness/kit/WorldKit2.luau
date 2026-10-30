@@ -2747,4 +2747,10 @@ function WK2.animate(o)
 	return stopAnim
 end
 
+-- WorldKit2.level(kind, opts) -> info: a whole dressed, tagged, playable level in one call (LevelKit.build: sky_islands,
+-- meadow_course, arena, town). Required lazily: LevelKit itself is built on this module.
+function WK2.level(kind, o)
+	return require(Kit:WaitForChild("LevelKit")).build(kind, o)
+end
+
 return WK2

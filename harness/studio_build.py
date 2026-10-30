@@ -38,7 +38,13 @@ HELP = f"""BUILD THE WORLD IN STUDIO (edit mode), not with a runtime script:
   Terrain: workspace.Terrain:Clear() wipes all terrain. Tag what gameplay needs (CollectionService:AddTag(part,
   "Checkpoint") or attributes) so runtime code finds it; never build geometry again at runtime.
   Runtime-only things (tweens, spinning hazards, movers, particles that must animate) stay in your scripts.
-- START FROM THE KIT'S BUILDERS, then tune and add on top: LookKit.apply(look), WorldKit2.biome(kind, {...}) for a whole
+- YOUR FIRST studio_build IS THE LEVEL: local info = require(Kit.LevelKit).build(kind, {{look = "<the game's look>", seed = 7}})
+  with kind "sky_islands" (3D platformer: hub + islands rising in an arc, jumpable paths), "meadow_course" (same on a
+  grassy valley floor), "arena" (combat/shooter) or "town" (cozy/top-down). One call applies the look, builds a dressed
+  level, puts the spawn ON the hub and tags KitCheckpoint / KitCoin / KitGoal / KitHazard / KitMover parts; return
+  LevelKit.describe(info) to see where everything is. Then CUSTOMIZE on top of it: landmark
+  pieces, props (WorldKit2.prop), moved or retagged spots. Never rebuild or re-sculpt the base (build() wipes Terrain).
+- No level kind fits the game? START FROM THE KIT'S BUILDERS, then tune and add on top: LookKit.apply(look), WorldKit2.biome(kind, {{...}}) for a whole
   dressed area (islands, grassland, forest, snowy_mountains, candy, ...), WorldKit.archipelago / WorldKit.island for
   floating islands, WorldKit2.platformingCourse / obby / raceCourse / arena / town / room for gameplay spaces,
   WorldKit2.prop and PropKit for dressing. Never hand-sculpt terrain with FillBlock/FillBall/Part slabs: it reads as
