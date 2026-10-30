@@ -92,7 +92,7 @@ local specCache = {} -- key -> spec
 ------------------------------------------------------------------------------------------------ styles
 local STYLES = {
 	toon = { name = "toon", emit = 0.1, influence = 0, fade = 0, life = 0.9, size = 1.15, count = 0.8, sat = 1.15,
-		val = 1.04, warm = 0, light = 1, sparkGlow = 0.35, ringGlow = 0.3, bright = 1, opaque = true,
+		val = 1.04, warm = 0, light = 1, sparkGlow = 0.6, ringGlow = 0.5, bright = 1, opaque = true,
 		slots = { dust = "circle", mist = "circle", spark = "circle", drop = "circle", streak = "circle", snow = "circle" },
 		lines = { color = "#FFFFFF", thick = 5, alpha = 0.9 } },
 	realistic = { name = "realistic", emit = 0, influence = 1, fade = 0.3, life = 1.1, size = 1, count = 1.2, sat = 0.8,
@@ -619,8 +619,8 @@ def("explosion", { group = "combat", variants = { "small", "large" }, default = 
 		return { layers = {
 			flash(st, { size = { 1.5, 6 }, transparency = { 0, 1 }, duration = 0.12, color = "#FFF6D6" }),
 			light(st, { color = "#FF9A3A", brightness = 6, range = 24, duration = 0.5 }),
-			particles(st, "fireball", { count = 9, direction = "up", spread = { 180, 180 }, speed = { 5, 10 }, drag = 5,
-				lifetime = { 0.35, 0.7 }, size = { { 0, 2 }, { 0.3, 3.8 }, { 1, 4.6 } }, transparency = { { 0, 0 }, { 0.6, 0.25 }, { 1, 1 } },
+			particles(st, "fireball", { count = 12, direction = "up", spread = { 180, 180 }, speed = { 5, 10 }, drag = 5,
+				lifetime = { 0.5, 0.9 }, size = { { 0, 2 }, { 0.2, 3.8 }, { 1, 4.6 } }, transparency = { { 0, 0 }, { 0.5, 0.1 }, { 1, 1 } },
 				color = col(st, fire), lightEmission = if st.opaque then 0.3 else 0.8, lightInfluence = 0, rotation = { 0, 360 },
 				rotSpeed = { -60, 60 }, zoffset = 1 }),
 			ring(st, { delay = 0.02, size = { 2, 16 }, duration = 0.45, color = "#FFE6B0", alpha = 0.15 }),
@@ -629,8 +629,9 @@ def("explosion", { group = "combat", variants = { "small", "large" }, default = 
 			particles(st, "debris", { count = 10, direction = "up", spread = { 70, 70 }, speed = { 20, 34 }, lifetime = { 0.8, 1.3 },
 				size = { { 0, 0.45 }, { 0.85, 0.35 }, { 1, 0 } }, color = col(st, "#3B3633"), acceleration = V(0, -70, 0),
 				rotation = { 0, 360 }, rotSpeed = { -500, 500 } }),
-			puff(st, { delay = 0.12, count = 9, size = 4, life = { 1.2, 1.9 }, direction = "up", spread = { 30, 30 }, speed = { 6, 12 },
-				drag = 2, rise = 3, color = if st.opaque then "#6B6366" else "#4A4442", slot = "smoke", alpha = 0.2, grow = 2.2 }),
+			ring(st, { delay = 0.06, size = { 1, 10 }, duration = 0.5, color = "#FFFFFF", alpha = 0.2, flat = false }),
+			puff(st, { delay = 0.12, count = 12, size = 4, life = { 1.4, 2 }, direction = "up", spread = { 22, 22 }, speed = { 8, 14 },
+				drag = 1.5, rise = 4, color = if st.opaque then "#6B6366" else "#4A4442", slot = "smoke", alpha = 0.2, grow = 2.2 }),
 		} }
 	end })
 
@@ -687,7 +688,7 @@ def("heal_aura", { group = "combat", build = function(st, _, c)
 	return { layers = {
 		ring(st, { size = { 1, 6 }, duration = 0.6, color = green, exact = true, alpha = 0.15 }),
 		ring(st, { delay = 0.3, size = { 1, 5 }, duration = 0.6, color = { "#FFFFFF", green }, exact = c ~= nil, alpha = 0.2 }),
-		particles(st, "glow", { rate = 30, duration = 1, shape = feet, direction = "up", spread = { 5, 5 }, speed = { 3, 6 },
+		particles(st, "magic", { rate = 30, duration = 1, shape = feet, direction = "up", spread = { 5, 5 }, speed = { 3, 6 },
 			lifetime = { 0.8, 1.2 }, size = { { 0, 0 }, { 0.2, 0.45 }, { 1, 0 } }, transparency = { { 0, 0.1 }, { 1, 1 } },
 			color = { "#EFFFE6", green }, lightEmission = 1, lightInfluence = 0 }),
 		glints(st, { rate = 10, duration = 1, shape = feet, direction = "up", speed = { 2, 4 }, size = 0.6, life = { 0.6, 0.9 },
@@ -784,7 +785,7 @@ def("gem_sparkle", { group = "pickups", continuous = true, build = function(st, 
 	return { layers = {
 		glints(st, { rate = 4, shape = { kind = "sphere", size = 2 }, size = 0.9, life = { 0.5, 0.8 },
 			color = { "#FFFFFF", gem, tone(st, "#FF9CEB") }, exact = true }),
-		particles(st, "glow", { rate = 3, shape = { kind = "sphere", size = 1.6 }, lifetime = { 0.8, 1.2 }, speed = { 0.2, 0.6 },
+		particles(st, "magic", { rate = 3, shape = { kind = "sphere", size = 1.6 }, lifetime = { 0.8, 1.2 }, speed = { 0.2, 0.6 },
 			spread = { 180, 180 }, size = { { 0, 0 }, { 0.3, 0.3 }, { 1, 0 } }, color = gem, lightEmission = 1, lightInfluence = 0 }),
 		light(st, { color = gem, exact = true, brightness = 1, range = 6, duration = 0 }),
 	} }
@@ -881,7 +882,7 @@ def("portal_swirl", { group = "pickups", continuous = true, build = function(st,
 		particles(st, "magic", { rate = 30, shape = { kind = "sphere", size = V(6, 6, 0.5), style = "surface", inOut = "inward" },
 			speed = { 3, 5 }, lifetime = { 0.6, 0.9 }, size = { { 0, 0 }, { 0.3, 0.35 }, { 1, 0 } }, color = { "#FFFFFF", hue },
 			lightEmission = 1, lightInfluence = 0 }),
-		particles(st, "glow", { rate = 4, lifetime = { 0.8, 1 }, speed = { 0, 0 }, size = { { 0, 2.5 }, { 0.5, 3.2 }, { 1, 2.5 } },
+		particles(st, "magic", { rate = 4, lifetime = { 0.8, 1 }, speed = { 0, 0 }, size = { { 0, 2.5 }, { 0.5, 3.2 }, { 1, 2.5 } },
 			transparency = { { 0, 1 }, { 0.5, 0.4 }, { 1, 1 } }, color = hue, lightEmission = 1, lightInfluence = 0 }),
 		light(st, { color = hue, exact = true, brightness = 2.5, range = 14, duration = 0 }),
 	} }
@@ -956,7 +957,7 @@ end
 def("fireflies", { group = "ambient", continuous = true, weather = true, build = function(st, _, c, o)
 	local box, a = areaBox(o, 6)
 	return { layers = {
-		particles(st, "glow", { offset = V(0, 3, 0), shape = box, rate = math.max(1, a * a / 400), lifetime = { 4, 7 },
+		particles(st, "magic", { offset = V(0, 3, 0), shape = box, rate = math.max(1, a * a / 400), lifetime = { 4, 7 },
 			speed = { 0.3, 1 }, spread = { 180, 180 }, drag = 0.3, acceleration = V(0, 0.15, 0), size = { { 0, 0.22 }, { 0.5, 0.34 }, { 1, 0.22 } },
 			transparency = { { 0, 1 }, { 0.15, 0 }, { 0.3, 0.85 }, { 0.45, 0.05 }, { 0.6, 0.9 }, { 0.75, 0.1 }, { 1, 1 } },
 			color = c or tone(st, "#D8FF6A"), lightEmission = 1, lightInfluence = 0 }),
@@ -1024,7 +1025,7 @@ end })
 def("dust_motes", { group = "ambient", continuous = true, weather = true, build = function(st, _, c, o)
 	local box, a = areaBox(o, 8)
 	return { layers = {
-		particles(st, "glow", { offset = V(0, 4, 0), shape = box, rate = math.max(1, a * a / 300), lifetime = { 4, 6 },
+		particles(st, "magic", { offset = V(0, 4, 0), shape = box, rate = math.max(1, a * a / 300), lifetime = { 4, 6 },
 			speed = { 0.2, 0.6 }, spread = { 180, 180 }, size = { { 0, 0 }, { 0.2, 0.16 }, { 0.8, 0.16 }, { 1, 0 } },
 			transparency = { { 0, 1 }, { 0.3, 0.3 }, { 0.7, 0.3 }, { 1, 1 } }, color = c or tone(st, "#FFF3D1"),
 			lightEmission = 0.6, lightInfluence = 0 }),
@@ -1113,6 +1114,125 @@ local function resolve(name, o)
 	return name, meta, variant
 end
 
+-- Readability pass (from a Studio review at 20-40 studs): presets are authored at "small" scale, then sizes, counts,
+-- lifetimes, opacity and light are pushed up here so effects read big, punchy and held. Change FXKit.tuning, then
+-- call FXKit.retune() to rebuild.
+FXKit.tuning = { size = 2.3, count = 1.7, life = 1.5, light = 2.6, flash = 2.2, opacity = 0.7, ambient = 0.55 }
+
+local function scaleSeq(seq, k)
+	if type(seq) == "number" then
+		return seq * k
+	elseif type(seq) == "table" then
+		local out = {}
+		for i, kp in seq do
+			if type(kp) == "table" then
+				out[i] = { kp[1], kp[2] * k, if kp[3] then kp[3] * k else nil }
+			elseif type(kp) == "number" then
+				out[i] = kp * k
+			else
+				out[i] = kp
+			end
+		end
+		return out
+	end
+	return seq
+end
+
+-- transparency keypoints pulled toward opaque (the last keypoint, the fade-out, is kept)
+local function opaqueSeq(seq, k)
+	if type(seq) ~= "table" then
+		return seq
+	end
+	local out = {}
+	for i, kp in seq do
+		if type(kp) == "table" and i < #seq then
+			out[i] = { kp[1], kp[2] * k }
+		else
+			out[i] = kp
+		end
+	end
+	return out
+end
+
+local function pairScale(v, k)
+	if type(v) == "table" then
+		local a, b = v[1], v[2]
+		return { if typeof(a) == "Vector3" or type(a) == "number" then a * k else a,
+			if typeof(b) == "Vector3" or type(b) == "number" then b * k else b }
+	elseif type(v) == "number" or typeof(v) == "Vector3" then
+		return v * k
+	end
+	return v
+end
+
+local function punchUp(spec, meta)
+	local T = FXKit.tuning
+	-- ambient fields and weather grow less (many small things, not one event)
+	local a = if meta.weather then T.ambient elseif meta.group == "ambient" then 0.75 else 1
+	local function lerpK(k)
+		return 1 + (k - 1) * a
+	end
+	local size, count, life = lerpK(T.size), lerpK(T.count), lerpK(T.life)
+	for _, L in spec.layers do
+		local k = L.kind
+		if k == "particles" then
+			L.size = scaleSeq(L.size, size)
+			if type(L.shape) == "table" and meta.group ~= "ambient" then
+				L.shape = table.clone(L.shape)
+				L.shape.size = pairScale(L.shape.size, math.sqrt(size))
+			end
+			if L.count then
+				L.count = math.min(math.floor(L.count * count + 0.5), 400)
+			end
+			if L.rate and not meta.weather then
+				L.rate = math.min(L.rate * count * 0.85, 400)
+			end
+			if type(L.lifetime) == "table" and not meta.weather then
+				L.lifetime = { math.min(math.max(L.lifetime[1] * life, 0.14), 2.4), math.min(math.max(L.lifetime[2] * life, 0.24), 3) }
+			end
+			if L.duration then
+				L.duration *= life
+			end
+			if not meta.weather then
+				L.transparency = opaqueSeq(L.transparency, T.opacity)
+				if (L.lightEmission or 0) >= 0.5 then
+					L.brightness = math.min((L.brightness or 1) * 1.8, 4)
+				end
+			end
+			-- bursts open up with their size
+			if L.count and type(L.speed) == "table" then
+				L.speed = { L.speed[1] * math.sqrt(size), L.speed[2] * math.sqrt(size) }
+			end
+		elseif k == "flash" then
+			L.size = pairScale(L.size, T.flash)
+			L.duration = math.clamp((L.duration or 0.1) * 2.2, 0.15, 0.4)
+		elseif k == "ring" then
+			L.size = pairScale(L.size, size * 0.9)
+			L.duration = math.clamp((L.duration or 0.35) * 1.6, 0.4, 1.2)
+			L.transparency = opaqueSeq(L.transparency, 0.5)
+			L.brightness = math.min((L.brightness or 1) * 2, 6)
+			L.lightEmission = math.max(L.lightEmission or 0, 0.6)
+		elseif k == "beam" then
+			L.width = pairScale(L.width, 1.8)
+			L.duration = (L.duration or 0.3) * 1.8
+			L.fadeOut = math.min((L.fadeOut or 0.15) * 1.6, 1)
+		elseif k == "light" then
+			L.brightness = math.min((L.brightness or 2) * T.light, 10)
+			L.range = math.min((L.range or 12) * 1.6, 60)
+			if L.duration and L.duration > 0 then
+				L.duration = math.max(L.duration * 2, 0.35)
+			end
+		elseif k == "decal" then
+			L.size = pairScale(L.size, 1.6)
+		end
+	end
+	return spec
+end
+
+function FXKit.retune()
+	table.clear(specCache)
+end
+
 local function build(name, meta, st, variant, o)
 	local c = asHex(o and o.color)
 	local area = if meta.weather or name == "lava_embers" then tostring(math.floor(tonumber(o and o.area) or 60)) else ""
@@ -1127,6 +1247,7 @@ local function build(name, meta, st, variant, o)
 		return nil
 	end
 	result.family = result.family or name
+	punchUp(result, meta)
 	for _, problem in VFX.validate(result) do
 		warnOnce("spec:" .. key .. problem, "preset '" .. name .. "' (" .. st.name .. "): " .. problem)
 	end
@@ -1405,11 +1526,13 @@ function FXKit.tracer(from, to, opts)
 	local st = styleOf(opts)
 	local cf, dist = lookFrame(a, b)
 	local hot = asHex(opts.color) or tone(st, "#FFC04D")
-	local w = tonumber(opts.width) or 0.1
-	local life = math.clamp(dist / 900, 0.03, 0.12)
+	local w = tonumber(opts.width) or 0.22
+	local life = math.clamp(dist / 600, 0.06, 0.16)
 	local fx = VFX.effect({ family = "bullet_tracer", layers = {
 		{ kind = "beam", from = V(0, 0, 0), to = V(0, 0, -dist), width = { w * 0.4, w }, color = { hot, "#FFF7D6" },
-			transparency = { { 0, 0.9 }, { 1, 0.1 } }, lightEmission = 1, lightInfluence = 0, duration = 0.04, fadeOut = 0.06 },
+			transparency = { { 0, 0.8 }, { 1, 0 } }, lightEmission = 1, lightInfluence = 0, duration = 0.08, fadeOut = 0.12 },
+		{ kind = "beam", from = V(0, 0, 0), to = V(0, 0, -dist), width = { w * 1.2, w * 2.5 }, color = hot,
+			transparency = { { 0, 0.95 }, { 1, 0.6 } }, lightEmission = 1, lightInfluence = 0, duration = 0.06, fadeOut = 0.1 },
 		{ kind = "particles", texture = (texOf(st, "streak")), count = 1, direction = "forward", spread = 0,
 			speed = math.min(dist / life, 1000), lifetime = life, orientation = "parallel", size = { { 0, w * 3 }, { 1, w * 2 } },
 			squash = { { 0, 3 }, { 1, 3 } }, color = "#FFFFFF", lightEmission = 1, lightInfluence = 0, transparency = { { 0, 0 }, { 1, 0.4 } } },
@@ -1435,7 +1558,7 @@ function FXKit.lightning(from, to, opts)
 	local cf, dist = lookFrame(a, b)
 	local hue = asHex(opts.color) or tone(st, "#9CC8FF")
 	local n = math.clamp(math.floor(tonumber(opts.segments) or dist / 3), 4, 14)
-	local w = tonumber(opts.width) or 0.35
+	local w = tonumber(opts.width) or 0.6
 	local layers = {}
 	local function bolt(delay, width, jitter, alpha)
 		local prev = V(0, 0, 0)
@@ -1443,7 +1566,7 @@ function FXKit.lightning(from, to, opts)
 			local z = -dist * i / n
 			local p = if i == n then V(0, 0, -dist) else V((math.random() - 0.5) * jitter, (math.random() - 0.5) * jitter, z)
 			table.insert(layers, { kind = "beam", delay = delay, from = prev, to = p, width = { width, width * 0.8 },
-				color = { "#FFFFFF", hue }, transparency = alpha, lightEmission = 1, lightInfluence = 0, duration = 0.06, fadeOut = 0.08,
+				color = { "#FFFFFF", hue }, transparency = alpha, lightEmission = 1, lightInfluence = 0, duration = 0.1, fadeOut = 0.12,
 				faceCamera = true })
 			prev = p
 		end
@@ -1452,10 +1575,12 @@ function FXKit.lightning(from, to, opts)
 	bolt(0, w, jitter, 0)
 	bolt(0, w * 3, jitter * 0.2, 0.75)
 	bolt(0.08, w * 0.7, jitter, 0.1)
-	table.insert(layers, flash(st, { offset = V(0, 0, -dist), size = { 0.5, 3 }, duration = 0.1, color = "#FFFFFF" }))
-	table.insert(layers, light(st, { offset = V(0, 0, -dist), color = hue, exact = true, brightness = 6, range = 22, duration = 0.25 }))
-	table.insert(layers, sparks(st, { offset = V(0, 0, -dist), count = 10, direction = "back", spread = { 70, 70 }, speed = { 12, 24 },
-		size = 0.16, gravity = 30, colors = { "#FFFFFF", hue }, exact = true, life = { 0.15, 0.3 } }))
+	bolt(0.16, w * 0.9, jitter, 0.05)
+	table.insert(layers, flash(st, { offset = V(0, 0, -dist), size = { 1.5, 7 }, duration = 0.2, color = "#FFFFFF" }))
+	table.insert(layers, ring(st, { offset = V(0, 0, -dist), size = { 2, 14 }, duration = 0.5, color = hue, exact = true, alpha = 0 }))
+	table.insert(layers, light(st, { offset = V(0, 0, -dist), color = hue, exact = true, brightness = 12, range = 40, duration = 0.5 }))
+	table.insert(layers, sparks(st, { offset = V(0, 0, -dist), count = 24, direction = "back", spread = { 70, 70 }, speed = { 20, 40 },
+		size = 0.45, gravity = 30, colors = { "#FFFFFF", hue }, exact = true, life = { 0.3, 0.6 } }))
 	local fx = VFX.effect({ family = "lightning", layers = layers }, cf, nil, "lightning")
 	FXKit.flashAt(b, shade(hue, 0.6), 0.15, 50)
 	FXKit.shakeAt(b, 0.2, 50)

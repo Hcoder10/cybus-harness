@@ -201,7 +201,7 @@ PROPS.tree = function(m, o, r, pal)
 		for i = 0, tiers - 1 do
 			local t = i / tiers
 			local d = h * (0.62 - t * 0.42)
-			local y = h * (0.26 + t * 0.19)
+			local y = h * (0.26 + t * 0.62)
 			local col = leafA:Lerp(leafB, t * 0.6)
 			vcyl(m, h * 0.13, d, V3(0, y, 0), col, leafMat)
 			vcyl(m, h * 0.06, d * 0.78, V3(0, y + h * 0.09, 0), shade(col, -0.08), leafMat)
@@ -209,7 +209,7 @@ PROPS.tree = function(m, o, r, pal)
 				vcyl(m, h * 0.03, d * 0.86, V3(0, y + h * 0.075, 0), pal.snow or Color3.new(1, 1, 1), mat("default"))
 			end
 		end
-		ball(m, h * 0.12, V3(0, h * 0.98, 0), o.snow and (pal.snow or Color3.new(1, 1, 1)) or leafB, leafMat)
+		ball(m, h * 0.12, V3(0, h * 0.9, 0), o.snow and (pal.snow or Color3.new(1, 1, 1)) or leafB, leafMat)
 		return trunk
 	elseif style == "palm" then
 		local seg, lean = 6, r:NextNumber(0.08, 0.16)
@@ -596,11 +596,11 @@ PROPS.bench = function(m, o, r, pal)
 	local col = c3(o.color, pal.wood)
 	local frame = pal.ink:Lerp(pal.metal, 0.4)
 	local seat = box(m, V3(w, 0.35, 2), V3(0, 2, 0), col, mat("wood"))
-	box(m, V3(w, 0.35, 0.9), CF(0, 3.3, 1.05) * ANG(rad(-12), 0, 0), col, mat("wood"))
-	box(m, V3(w, 0.35, 0.9), CF(0, 4.1, 1.2) * ANG(rad(-12), 0, 0), col, mat("wood"))
+	box(m, V3(w, 0.9, 0.35), CF(0, 3.1, 1.05) * ANG(rad(12), 0, 0), col, mat("wood"))
+	box(m, V3(w, 0.9, 0.35), CF(0, 4.2, 1.28) * ANG(rad(12), 0, 0), col, mat("wood"))
 	for _, x in ipairs({ -w / 2 + 0.6, w / 2 - 0.6 }) do
 		box(m, V3(0.4, 2, 2), V3(x, 1, 0), frame, mat("metal"))
-		box(m, V3(0.4, 2.6, 0.4), CF(x, 3.1, 1.15) * ANG(rad(-12), 0, 0), frame, mat("metal"))
+		box(m, V3(0.4, 2.8, 0.4), CF(x, 3.3, 1.2) * ANG(rad(12), 0, 0), frame, mat("metal"))
 	end
 	return seat
 end
@@ -781,7 +781,7 @@ PROPS.tower = function(m, o, r, pal)
 	vcyl(m, 1.4, d + 1.4, V3(0, h, 0), shade(stone, 0.06), mat("stone"))
 	for i = 0, 9 do
 		local a = i / 10 * PI * 2
-		box(m, V3(1.6, 1.8, 1.2), CF(math.cos(a) * (d / 2 + 0.3), h + 1.6, math.sin(a) * (d / 2 + 0.3)) * ANG(0, -a, 0),
+		box(m, V3(1.6, 1.8, 1.2), CF(math.cos(a) * (d / 2 + 0.3), h + 1.6, math.sin(a) * (d / 2 + 0.3)) * ANG(0, PI / 2 - a, 0),
 			stone, mat("stone"))
 	end
 	if o.roof ~= false then
@@ -1021,7 +1021,7 @@ PROPS.shelf = function(m, o, r, pal)
 	for _, x in ipairs({ -w / 2, w / 2 }) do
 		box(m, V3(0.3, h, 2), V3(x, h / 2, 0), col, mat("wood"))
 	end
-	local shelves = math.floor(h / 2.2)
+	local shelves = math.max(1, math.floor(h / 2.2))
 	for i = 0, shelves do
 		local y = 0.2 + i * (h - 0.4) / shelves
 		box(m, V3(w, 0.25, 2), V3(0, y, 0), col, mat("wood"))
@@ -1273,6 +1273,11 @@ function WK2.prop(kind, o)
 	m.Name = o.name or kind
 	local r = Random.new(o.seed or 1)
 	local main = fn(m, o, r, palOf(o)) or m:FindFirstChildWhichIsA("BasePart")
+	if not main then -- degenerate options (count=0 ...): keep an invisible anchor so callers still get a placeable Model
+		main = box(m, V3(1, 1, 1), CF(0, 0.5, 0), Color3.new(1, 1, 1), M.SmoothPlastic)
+		main.Transparency = 1
+		main.CanCollide = false
+	end
 	m.PrimaryPart = main
 	main.PivotOffset = main.CFrame:Inverse()
 	m:SetAttribute("Prop", kind)
@@ -1349,8 +1354,9 @@ function WK2.populate(o)
 	local spread = (o.spread or 0.1) * math.max(sx, sz)
 	local sc = o.scale or { 0.8, 1.25 }
 	local include = o.include
-	for _ = 1, (o.count or 40) * 3 do
-		if #made >= (o.count or 40) then break end
+	local want = math.min(o.count or 40, o.max or 400) -- cap: a huge region should not become 20k parts
+	for _ = 1, want * 3 do
+		if #made >= want then break end
 		local k = pick()
 		local off
 		if #clusters > 0 and r:NextNumber() < 0.82 then
@@ -1562,8 +1568,9 @@ BIOMES.swamp = function(b)
 	end
 	for _ = 1, 7 do
 		local a, d = r:NextNumber(0, PI * 2), r:NextNumber(0.18, 0.42) * S
-		disc(c + V3(math.cos(a) * d, 0, math.sin(a) * d), c.Y - 4, c.Y - 0.6, r:NextNumber(10, 22), M.Water)
-		disc(c + V3(math.cos(a) * d, 0, math.sin(a) * d), c.Y - 0.6, c.Y + 1, r:NextNumber(10, 22), M.Air)
+		local pr = r:NextNumber(10, 22)
+		disc(c + V3(math.cos(a) * d, 0, math.sin(a) * d), c.Y - 4, c.Y - 0.6, pr, M.Water)
+		disc(c + V3(math.cos(a) * d, 0, math.sin(a) * d), c.Y - 0.6, c.Y + 1, pr, M.Air)
 	end
 	b.pop({ kinds = { { "dead_tree", 3 }, { "round_tree", 1, { color = b.pal.leaf:Lerp(b.pal.dirt, 0.4) } },
 		{ "reeds", 4 }, { "mushroom", 2 }, { "log", 1 }, { "grass", 3 } }, count = 60, clusters = 8, clear = S * 0.1 })
@@ -1586,7 +1593,10 @@ BIOMES.volcanic = function(b)
 		for j = 0, 14 do
 			local d = R * 0.9 + j * S * 0.025
 			local wob = math.sin(j * 0.7 + i) * 0.25
-			disc(vc + V3(math.cos(a + wob) * d, 0, math.sin(a + wob) * d), c.Y - 1.5, c.Y + 0.1, 3.2, M.CrackedLava)
+			local p = vc + V3(math.cos(a + wob) * d, 0, math.sin(a + wob) * d)
+			if ((p - c) * V3(1, 0, 1)).Magnitude < S / 2 - 6 then
+				disc(p, c.Y - 1.5, c.Y + 0.1, 3.2, M.CrackedLava)
+			end
 		end
 	end
 	local glow = box(b.folder, V3(1, 1, 1), CF(vc + V3(0, H + 6, 0)), Color3.fromRGB(255, 120, 40), M.Neon)
@@ -1613,7 +1623,7 @@ end
 
 BIOMES.neon_city = function(b)
 	local c, S = b.center, b.size
-	disc(c, c.Y - 10, c.Y - 1, S / 2 + 8, M.Asphalt)
+	T:FillBlock(CF(c.X, c.Y - 5.5, c.Z), V3(S, 9, S), M.Asphalt)
 	local blocks = math.max(1, math.floor((S - 16) / 72))
 	local town = WK2.town({ center = c, blocks = blocks, blockSize = 56, street = 16, style = "neon", seed = b.seed,
 		parent = b.folder, palette = b.o.palette })
@@ -1897,7 +1907,7 @@ function WK2.platformingCourse(o)
 			end
 			yaw = math.clamp(yaw + r:NextNumber(-0.35, 0.35), -0.9, 0.9) -- winds, but never doubles back
 			dir = CFrame.Angles(0, yaw, 0):VectorToWorldSpace(baseDir).Unit
-			pos = pos + dir * (prevR + gap + d / 2) + V3(0, rise, 0)
+			pos = pos + dir * (prevR + gap + (kind == "spinner" and d * 0.9 or d / 2)) + V3(0, rise, 0)
 		end
 		local pm
 		if kind == "spinner" then
@@ -2402,6 +2412,10 @@ function WK2.town(o)
 			if style == "suburb" or style == "medieval" then
 				box(m, V3(B - 5, 1, B - 5), CF(bc - V3(0, 0.15, 0)), pal.ground, mat("ground"))
 			end
+			if style == "suburb" then
+				WK2.prop("round_tree", { position = bc + V3(0, 0.35, 0), parent = m, seed = r:NextInteger(1, 1e6),
+					palette = o.palette, scale = 0.7 })
+			end
 			for _, lot in ipairs({ { -1, -1 }, { 1, -1 }, { -1, 1 }, { 1, 1 } }) do
 				local lp = bc + V3(lot[1] * B / 4, 0.35, lot[2] * B / 4)
 				local facesX = r:NextNumber() < 0.5
@@ -2415,10 +2429,8 @@ function WK2.town(o)
 					return WK2.prop(kind, opts)
 				end
 				if style == "suburb" then
-					put("house", { width = B * 0.32, depth = B * 0.26, floors = r:NextInteger(1, 2),
+					put("house", { width = B * 0.26, depth = B * 0.22, floors = r:NextInteger(1, 2),
 						roof = ({ pal.roof, pal.secondary, pal.primary })[r:NextInteger(1, 3)] })
-					local tp = lp + V3(-lot[1] * B * 0.17, 0, -lot[2] * B * 0.17)
-					WK2.prop("round_tree", { position = tp, parent = m, seed = seed + 1, palette = o.palette, scale = 0.9 })
 				elseif style == "medieval" then
 					put("house", { width = B * 0.3, depth = B * 0.24, floors = r:NextInteger(1, 2), lit = true,
 						color = pal.wall:Lerp(pal.wood, r:NextNumber(0, 0.4)) })
@@ -2559,8 +2571,8 @@ function WK2.dungeon(o)
 	if o.torches ~= false then
 		for i, ws in ipairs(wallSegs) do
 			if i % 5 == 0 then
-				local tp = ws.p + ws.inward * 1.2 + V3(0, H * 0.35, 0)
-				WK2.prop("torch", { position = tp, parent = m, scale = 0.6, palette = o.palette })
+				local tp = ws.p + ws.inward * 1.6
+				WK2.prop("torch", { position = tp, parent = m, height = 5, palette = o.palette })
 			end
 		end
 	end
@@ -2593,7 +2605,13 @@ end
 
 -- ---------------------------------------------------------------------------------------------------- animate
 
-local animConn
+local animConns = {}
+local function stopAnim()
+	for _, cn in ipairs(animConns) do
+		cn:Disconnect()
+	end
+	table.clear(animConns)
+end
 -- WorldKit2.animate({movers=true, spinners=true, crumble=true, bounce=true, coins=false}) runs the gameplay hooks:
 -- KitMover models swing by MoveOffset over MovePeriod, KitSpinner models turn at SpinSpeed (rad/s) - both set
 -- AssemblyLinearVelocity/AngularVelocity so standing players ride along; KitCrumble drops 0.6 s after a player lands
@@ -2602,9 +2620,7 @@ local animConn
 -- coins=true spins KitCoin/KitGem (do that on the client too, not the server). Call once per side; returns a stop fn.
 function WK2.animate(o)
 	o = o or {}
-	if animConn then
-		animConn:Disconnect()
-	end
+	stopAnim() -- calling animate again replaces every hook instead of stacking them
 	local t0 = os.clock()
 	local origins = {}
 	local touched = {}
@@ -2637,12 +2653,12 @@ function WK2.animate(o)
 			for _, p in ipairs(parts) do
 				if not touched[p] then
 					touched[p] = true
-					p.Touched:Connect(function(hit) fn(inst, hit) end)
+					table.insert(animConns, p.Touched:Connect(function(hit) fn(inst, hit) end))
 				end
 			end
 		end
 		for _, inst in ipairs(CollectionService:GetTagged(tagName)) do attach(inst) end
-		CollectionService:GetInstanceAddedSignal(tagName):Connect(attach)
+		table.insert(animConns, CollectionService:GetInstanceAddedSignal(tagName):Connect(attach))
 	end
 	if o.crumble ~= false then
 		local busy = {}
@@ -2684,7 +2700,7 @@ function WK2.animate(o)
 			end
 		end)
 	end
-	animConn = RunService.Heartbeat:Connect(function()
+	table.insert(animConns, RunService.Heartbeat:Connect(function()
 		local t = os.clock() - t0
 		if o.movers ~= false then
 			for _, inst in ipairs(CollectionService:GetTagged("KitMover")) do
@@ -2727,13 +2743,8 @@ function WK2.animate(o)
 				end
 			end
 		end
-	end)
-	return function()
-		if animConn then
-			animConn:Disconnect()
-			animConn = nil
-		end
-	end
+	end))
+	return stopAnim
 end
 
 return WK2

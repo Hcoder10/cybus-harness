@@ -11,7 +11,7 @@ FXKit.register()
 
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
-local SECONDS = tonumber(script:GetAttribute("Seconds")) or 2.6
+local SECONDS = tonumber(script:GetAttribute("Seconds")) or 3
 local ORIGIN = script:GetAttribute("Origin")
 ORIGIN = if typeof(ORIGIN) == "Vector3" then ORIGIN else Vector3.new(0, 40, 900)
 local STYLES = {}
@@ -97,14 +97,15 @@ for i, name in names do
 	t.Text = name
 	t.TextScaled = true
 	t.Font = Enum.Font.GothamBold
-	t.TextColor3 = Color3.fromRGB(200, 208, 222)
+	t.TextColor3 = Color3.fromRGB(255, 214, 90)
 	local stroke = Instance.new("UIStroke")
 	stroke.Thickness = 2
 	stroke.Color = Color3.fromRGB(20, 22, 28)
 	stroke.Parent = t
 	t.Parent = bb
+	bb.Enabled = false
 	bb.Parent = stage
-	labels[name] = t
+	labels[name] = bb
 end
 
 -- title bar
@@ -129,7 +130,19 @@ corner.Parent = title
 gui.Parent = player:WaitForChild("PlayerGui")
 
 ------------------------------------------------------------------------------------------------ camera
+-- The PlayerModule resets the camera to Custom when the character spawns (after this script starts): wait for it,
+-- then hold Scriptable every frame so the demo's camera tweens are what renders.
+if not player.Character then
+	player.CharacterAdded:Wait()
+end
+task.wait(1)
+camera = workspace.CurrentCamera
 camera.CameraType = Enum.CameraType.Scriptable
+game:GetService("RunService"):BindToRenderStep("FXKitDemoCam", Enum.RenderPriority.Camera.Value + 1, function()
+	if camera.CameraType ~= Enum.CameraType.Scriptable and not _G.FXKitDemoDone then
+		camera.CameraType = Enum.CameraType.Scriptable
+	end
+end)
 local function frame(center, wide)
 	local back = if wide then Vector3.new(0, 16, 40) else Vector3.new(0, 8, 21)
 	local look = center + Vector3.new(0, if wide then 8 else 2.5, 0)
@@ -199,10 +212,11 @@ local function playOne(name, center, style, variant)
 		return
 	elseif show.from then
 		opts.to = center + show.to
-		table.insert(handles, FXKit.play(name, center + show.from, opts))
-		task.wait(hold * 0.5)
-		table.insert(handles, FXKit.play(name, center + show.from + Vector3.new(0, 1.5, 0), opts))
-		task.wait(hold * 0.5)
+		for take = 1, 3 do
+			table.insert(handles, FXKit.play(name, center + show.from + Vector3.new(0, (take - 1) * 1.2, 0), opts))
+			task.wait(1)
+		end
+		task.wait(0.4)
 		return
 	end
 
@@ -218,9 +232,12 @@ local function playOne(name, center, style, variant)
 	if info.continuous then
 		task.wait(hold)
 	else
-		task.wait(math.min(1.4, hold * 0.5))
-		table.insert(handles, FXKit.play(name, at, opts)) -- a second take for the recording
-		task.wait(hold - math.min(1.4, hold * 0.5))
+		local gap = math.max(1, hold / 3)
+		task.wait(gap)
+		table.insert(handles, FXKit.play(name, at, opts)) -- second and third takes for the recording
+		task.wait(gap)
+		table.insert(handles, FXKit.play(name, at, opts))
+		task.wait(gap + 0.5)
 	end
 	for _, h in handles do
 		h:stop()
@@ -241,12 +258,12 @@ for _, style in STYLES do
 		local info = FXKit.info(name)
 		local variants = show.variants or { false }
 		frame(cells[name], show.wide)
-		labels[name].TextColor3 = Color3.fromRGB(255, 214, 90)
+		labels[name].Enabled = true
 		for _, v in variants do
 			title.Text = string.upper(info.group) .. "  ·  " .. name .. (if v then " (" .. v .. ")" else "") .. "  ·  " .. style
 			playOne(name, cells[name], style, if v then v else nil)
 		end
-		labels[name].TextColor3 = Color3.fromRGB(200, 208, 222)
+		labels[name].Enabled = false
 	end
 	-- overview: the whole grid, one-shots rippling across it
 	title.Text = "FXKit  ·  " .. #names .. " presets  ·  " .. style
@@ -269,4 +286,5 @@ end
 title.Text = "FXKit demo done"
 task.wait(2)
 gui:Destroy()
+_G.FXKitDemoDone = true
 camera.CameraType = Enum.CameraType.Custom
