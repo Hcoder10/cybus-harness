@@ -145,6 +145,7 @@ def arch_problems(arch: dict) -> list[str]:
     """Roblox placement mistakes that make code silently not run (checked before anyone builds on them)."""
     out = []
     seen: dict[str, str] = {}
+    classes: set[str] = set()
     for f in arch.get("files") or []:
         path = str(f.get("path", ""))
         name = path.rsplit("/", 1)[-1]
@@ -168,12 +169,22 @@ def arch_problems(arch: dict) -> list[str]:
         if info.instance_path in seen:
             out.append(f"{path} and {seen[info.instance_path]} become the same instance {info.instance_path}")
         seen[info.instance_path] = path
+        classes.add(info.class_name)
         api = str(f.get("api", ""))
         # "PlayerState.get(player) -> ..." in a Script's API means other code expects to require it: it can't.
         if info.class_name in ("Script", "LocalScript") and re.search(rf"\b{re.escape(info.name)}\s*[.:]\s*\w+\s*\(", api):
             out.append(f"{path}: its API ({api[:60]}...) is a module API that other code would require, but a "
                        f"{info.class_name} cannot be required; make it {path.rsplit('.', 2)[0]}.luau (ModuleScript) and "
                        "let ONE entry script per side require the modules and call their init")
+    # Live (Lantern Isles v2): asked to fix "a Script cannot be required", the lead made EVERY file a ModuleScript,
+    # entry points included. Nothing required anything and the whole game silently never ran.
+    if arch.get("files") and "Script" not in classes:
+        out.append("there is no server entry Script: add ServerScriptService/Main.server.luau (a Script, owned by one "
+                   "item) that requires the server modules and calls their init/start; modules alone never run")
+    if arch.get("files") and "LocalScript" not in classes:
+        out.append("there is no client entry LocalScript: add StarterPlayer/StarterPlayerScripts/Main.client.luau (a "
+                   "LocalScript, owned by one item) that requires the client modules (world, controls, camera, HUD, "
+                   "VFX) and calls their init/start; modules alone never run")
     return out
 
 
