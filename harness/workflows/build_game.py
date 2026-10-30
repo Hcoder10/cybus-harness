@@ -305,6 +305,19 @@ def normalize_arch(arch: dict, max_items: int) -> tuple[dict, list[str]]:
             elif it["aspect"] in visual or any(str(f).startswith(("StarterPlayer", "StarterGui")) for f in it["files"]):
                 it["depends_on"] = sorted(set(it["depends_on"]) | set(world))
         items.sort(key=lambda i: i["id"] not in world)
+    # Live (v3): the lead added the client entry the gate asked for but gave it to no item, and it was dropped here,
+    # leaving the game with no client entry again. An unowned entry script goes to an item instead: the client entry
+    # to the world item (built first), the server entry to the first item with server files.
+    for p in [p for p in files if p not in owner and p.endswith((".client.luau", ".server.luau"))]:
+        client = p.endswith(".client.luau")
+        pick = next((i for i in items if i["aspect"] == "world_art"), None) if client else None
+        root = "StarterPlayer" if client else "ServerScriptService"
+        pick = pick or next((i for i in items if any(str(f).startswith(root) for f in i["files"])), None) \
+            or (items[0] if items else None)
+        if pick is not None:
+            pick["files"].append(p)
+            owner[p] = pick["id"]
+            notes.append(f"entry script {p} had no owning item; given to {pick['id']}")
     unowned = [p for p in files if p not in owner]
     for p in unowned:
         notes.append(f"file {p} has no owning item; dropped")
