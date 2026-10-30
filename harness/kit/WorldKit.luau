@@ -269,6 +269,15 @@ function WorldKit.claimSpawn(position, force)
 	spawn.Transparency = 1
 	spawn.CanCollide = true
 	spawn.Neutral = true
+	-- The island's grass bumps rise above its nominal top (live: players spawned INSIDE the terrain, camera buried):
+	-- stand on whatever is really there, found by a ray from well above.
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { spawn }
+	local hit = Workspace:Raycast(position + Vector3.new(0, 400, 0), Vector3.new(0, -800, 0), params)
+	if hit then
+		position = hit.Position
+	end
 	local old = spawn.Position
 	spawn.CFrame = CFrame.new(position + Vector3.new(0, 0.6, 0))
 	spawn:SetAttribute("KitSpawnClaimed", true)
