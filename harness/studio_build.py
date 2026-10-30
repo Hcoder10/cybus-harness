@@ -44,6 +44,10 @@ HELP = f"""BUILD THE WORLD IN STUDIO (edit mode), not with a runtime script:
   WorldKit2.prop and PropKit for dressing. Never hand-sculpt terrain with FillBlock/FillBall/Part slabs: it reads as
   flat boxes (live: a builder abandoned the kit and its world became square grass slabs). If a kit call surprises you,
   change its options or position, don't replace it.
+- WorldKit.island / archipelago / hill, WorldKit2.biome and WorldKit.water build TERRAIN: no Parts appear in World
+  or workspace for them (an empty folder is normal). Check them with studio_view, never by searching for parts or
+  raycasting (live: builders spent whole rounds hunting "missing" islands that were on screen). Their return values
+  (top, spawn, center) are what to place things on.
 - Your SCRIPT FILES still have to be written with write_file (the lookup module, entry scripts): write them as soon as
   the first islands stand, then keep improving the world.
 - studio_view(views?): plays the game and shows you screenshots. With no views you get a survey: the player's own
