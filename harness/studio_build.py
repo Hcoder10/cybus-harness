@@ -46,6 +46,18 @@ HELP = f"""BUILD THE WORLD IN STUDIO (edit mode), not with a runtime script:
 """
 
 
+REFRESH_LUA = """for _, path in ipairs({PATHS}) do
+	local inst = game
+	for _, n in ipairs(string.split(path, ".")) do inst = inst and inst:FindFirstChild(n) end
+	if inst and inst:IsA("ModuleScript") then
+		local parent, c = inst.Parent, inst:Clone()
+		inst:Destroy()
+		c.Parent = parent
+	end
+end
+return true"""
+
+
 def _vec(v: Any, default: tuple[float, float, float]) -> tuple[float, float, float]:
     try:
         x, y, z = (float(a) for a in v)
@@ -116,22 +128,7 @@ class StudioBuild:
         if not mods:
             return
         paths = ", ".join(json.dumps(m) for m in mods)
-        await self.stage.edit(
-            "for _, path in ipairs({" + paths + "}) do
-"
-            "	local inst = game
-"
-            "	for _, n in ipairs(string.split(path, \".\")) do inst = inst and inst:FindFirstChild(n) end
-"
-            "	if inst and inst:IsA(\"ModuleScript\") then
-"
-            "		local parent, c = inst.Parent, inst:Clone()
-		inst:Destroy()
-		c.Parent = parent
-	end
-"
-            "end
-return true")
+        await self.stage.edit(REFRESH_LUA.replace("PATHS", paths))
 
     async def ensure(self) -> None:
         """A relaunched Studio has a fresh place: replay the log (after the kit reached it)."""
