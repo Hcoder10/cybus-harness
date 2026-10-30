@@ -285,7 +285,7 @@ def normalize_arch(arch: dict, max_items: int) -> tuple[dict, list[str]]:
     # items start first with no dependencies; every item judged on what the player sees waits for them.
     world = [i["id"] for i in items if i["aspect"] == "world_art"]
     if world and os.environ.get("HARNESS_WORLD_FIRST", "1") != "0":
-        visual = {"camera", "vfx", "hud", "ui_menus", "animation", "game_feel", "cinematics", "lighting"}
+        visual = {"camera", "vfx", "hud", "ui_menus", "animation", "game_feel", "characters", "polish", "cohesion"}
         for it in items:
             if it["id"] in world:
                 it["depends_on"] = []
