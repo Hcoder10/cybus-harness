@@ -475,11 +475,19 @@ class Stage:
         self.server.reset()
         self.playing = True                   # from here on stop() must run, even if the start fails half way
         await self._start_play()
+        timeout = float(os.environ.get("HARNESS_HELLO_TIMEOUT", max(timeout, 120)))
         try:
             await asyncio.wait_for(self.server.hello.wait(), timeout)
         except asyncio.TimeoutError as e:
+            out = ""
+            try:                                  # say WHY: the play session's own output
+                r = await self.bridge.call("diagnostics_get_output", {})
+                out = json.dumps(r)[-4000:]
+            except Exception as ex:  # noqa: BLE001
+                out = f"(could not read Studio output: {ex})"
+            log.error("boot timeout; Studio output tail: %s", out)
             raise StageError("the game never reached the harness: is KitBoot.server running, and HTTP enabled? "
-                             "(check the output log for a boot error)") from e
+                             f"Studio output: {out[-1500:]}") from e
         deadline = time.monotonic() + 30
         while True:                      # the client relay connects a moment after the server says hello
             try:
