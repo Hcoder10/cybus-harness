@@ -141,6 +141,35 @@ SERVER_CONTAINERS = ("ServerScriptService/", "Workspace/")
 READ_LOCK = int(os.environ.get("HARNESS_READ_LOCK", "6"))   # reads in a row before reading others' files is refused
 
 
+_GUI_NEW = re.compile(r'Instance\.new\(\s*"(Frame|TextLabel|TextButton|ImageLabel|ImageButton|UIStroke|UIGradient)"')
+_PART_NEW = re.compile(r'Instance\.new\(\s*"(Part|WedgePart|CornerWedgePart|TrussPart)"')
+_LIGHT_WRITE = re.compile(r'Lighting\.(ClockTime|Brightness|Ambient|OutdoorAmbient|ExposureCompensation)\s*=(?!=)')
+
+
+def kit_problems(srcs: dict[str, str]) -> dict[str, list[str]]:
+    """Hand-built work a kit already does better (live: a HUD builder hand-made its widgets with UIKit in the brief, a
+    world builder overrode the look preset and blew out the exposure). Counts only clear cases."""
+    out: dict[str, list[str]] = {}
+    for path, src in srcs.items():
+        probs = []
+        if "/Kit/" in path:
+            continue
+        gui = len(_GUI_NEW.findall(src))
+        if gui >= 10 and "UIKit" not in src:
+            probs.append(f"{gui} hand-made GUI objects and no UIKit: build HUD/menu widgets from Kit.UIKit (UI.theme(...) then "
+                         "UI.counter / bar / banner / timer / panel / button ...); they animate and match the theme")
+        parts = len(_PART_NEW.findall(src))
+        if parts >= 12 and not any(k in src for k in ("WorldKit", "PropKit", "LookKit")):
+            probs.append(f"{parts} hand-placed Part constructors and no WorldKit/WorldKit2/PropKit: build terrain, "
+                         "biomes, courses and props with the kits, then add only the signature pieces by hand")
+        if ("LookKit.apply" in src or "WorldKit.lighting" in src) and _LIGHT_WRITE.search(src):
+            probs.append("Lighting properties are set after a LookKit/WorldKit look preset: delete those writes; the "
+                         "preset's values are the tuned look (live: an override blew the exposure out to yellow-white)")
+        if probs:
+            out[path] = probs
+    return out
+
+
 def arch_problems(arch: dict) -> list[str]:
     """Roblox placement mistakes that make code silently not run (checked before anyone builds on them)."""
     out = []
@@ -423,6 +452,9 @@ class Build:
         out = {p: ["WIRING " + x for x in v] for p, v in wiring_problems(self.ws.files(), srcs).items()}
         for p, v in (await api_problems(self.ws.root, list(srcs))).items():
             out.setdefault(p, []).extend("API " + x for x in v)
+        if os.environ.get("HARNESS_KIT_GATE", "1") != "0":
+            for p, v in kit_problems(srcs).items():
+                out.setdefault(p, []).extend("KIT " + x for x in v)
         return out
 
     def builder_tools(self, item: dict, writable: set[str] | None = None) -> list[Tool]:
