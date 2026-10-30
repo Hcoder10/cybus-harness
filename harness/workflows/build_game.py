@@ -1136,7 +1136,7 @@ class Build:
 
     async def see(self, item: dict, label: str):
         cap = item["capture"]
-        if self.uses_studio(item) and cap.get("kind") in ("world", "screen") and not cap.get("commands"):
+        if self.uses_studio(item) and cap.get("kind") in ("world", "screen"):
             # A world is judged from the player's view plus a framed overview and side view (live: the spawn view
             # alone judged a layout it could not see, and repairs chased it).
             from harness.stage import Capture
