@@ -924,7 +924,21 @@ class Build:
             self.items = self.arch["items"]
             wf.log(f"architecture: reusing architecture.json from this run ({len(self.items)} items)")
             return
-        arch = await wf.agent(prompts.arch_brief(self.plan, self.style_md, kit_api()), role=self.architect,
+        brief = prompts.arch_brief(self.plan, self.style_md, kit_api())
+        if self.studio is not None:
+            # Live (Starbloom): architects split the world between a runtime world script and other items, or made
+            # the world a module nothing ran. With Studio building, the world is not code at all.
+            brief += ("\n\nWORLD: one world_art item, first, with no dependencies, builds the whole world IN ROBLOX "
+                      "STUDIO (edit mode; saved in the place), not at runtime. It owns a ModuleScript "
+                      "src/ServerScriptService/World.luau that only FINDS the Studio-built instances by "
+                      "CollectionService tag (SpawnPoint, Checkpoint, Collectible, Goal, Hazard, Mover...) and returns "
+                      "their handles (M.build(), idempotent) plus starts runtime-only motion, and a one-line "
+                      "src/ServerScriptService/WorldBoot.server.luau that calls it. No other file builds geometry.")
+        cap = int(os.environ.get("HARNESS_MAX_ITEMS", "16"))
+        if cap < 8:
+            brief += (f"\n\nITEM COUNT: use exactly {cap} items (not 8-16): the world; the core loop (movement, "
+                      "systems, server state, client entry); and the camera, HUD/menus, VFX and audio together.")
+        arch = await wf.agent(brief, role=self.architect,
                               system=prompts.LEAD_SYSTEM, schema=schemas.ARCH, label="architecture")
         if not isinstance(arch, dict):
             raise RuntimeError("the lead produced no architecture")
