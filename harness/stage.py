@@ -401,6 +401,12 @@ class Stage:
             raise StageError(f"{n} Roblox Studio window(s) already open. Close them (save your work first) so the "
                              "harness has the only Studio; it will open its own place.")
         place = build_template(self.run_id, self.run_dir / "place" / f"{self.run_id}.rbxlx")
+        # The template is a fresh place with no scripts, but every unpublished place is PlaceId 0, so the workspace's
+        # sync record would say "already pushed" and a resumed run would push NOTHING (live: KitBoot never reached the
+        # place and every resume died with "the game never reached the harness"). A new Studio means a full push.
+        (Path(self.ws.root) / ".sync.json").unlink(missing_ok=True)
+        for stale in place.parent.glob("*.lock"):        # left by a Studio that was killed
+            stale.unlink(missing_ok=True)
         exe = studio_exe()
         if not exe:
             raise StageError("Roblox Studio is not installed (no RobloxStudioBeta.exe found)")
