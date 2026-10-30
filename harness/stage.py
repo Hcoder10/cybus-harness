@@ -20,6 +20,7 @@ import json
 import logging
 import math
 import os
+import re
 import shlex
 import shutil
 import socket
@@ -356,7 +357,11 @@ class Capture:
     error: str = ""
 
     def errors(self) -> list[str]:
-        return [str(l.get("text", "")) for l in self.logs if l.get("kind") == "error"]
+        # A warning that reports a failure is an error to the fixer: entry scripts pcall their modules and warn
+        # ("[Game] World.build failed: ...attempt to index nil with 'new'"), which used to be dropped.
+        fail = re.compile(r"fail|error|attempt to|is not a valid member|unable to|infinite yield|timeout", re.I)
+        return [str(l.get("text", "")) for l in self.logs
+                if l.get("kind") == "error" or (l.get("kind") == "warning" and fail.search(str(l.get("text", ""))))]
 
 
 class Stage:
