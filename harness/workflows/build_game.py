@@ -382,10 +382,14 @@ class Build:
         """Route runtime errors to the items whose scripts appear in them."""
         paths = self.instance_to_item()
         out: dict[str, list[str]] = {}
+        fail = re.compile(r"fail|error|attempt to|invalid argument|is not a valid member|unable to|infinite yield", re.I)
         for entry in logs:
-            if entry.get("kind") != "error":
-                continue
             text = str(entry.get("text", ""))
+            # A warning that reports a failure is an error to the fixer: entry scripts pcall the modules and warn
+            # (live: "[Game] World.build failed: ReplicatedStorage.Shared.World:307: invalid argument #2", dropped
+            # here for being a warning, so the world fixer never learned why no island appeared).
+            if entry.get("kind") != "error" and not (entry.get("kind") == "warning" and fail.search(text)):
+                continue
             for inst, iid in paths.items():
                 if inst in text:
                     out.setdefault(iid, [])
