@@ -219,8 +219,14 @@ def clock_time(v, problems: list[str]) -> float:
         return 14.0
     if 24 < x <= 1440:
         problems.append(f"lighting.ClockTime={x:g} read as minutes = {x / 60:g} h")
-        return x / 60
-    return _num(x, 14, 0, 24, problems, "lighting.ClockTime")
+        x = x / 60
+    x = _num(x, 14, 0, 24, problems, "lighting.ClockTime")
+    # Art directors write "golden hour" as 16-17h; Roblox's sun only warms past ~17.4, so 16.5 renders as flat
+    # afternoon haze (live, Lantern Isles: every capture read as noon). Late afternoon means golden: move it there.
+    if 16.0 <= x < 17.4:
+        problems.append(f"lighting.ClockTime={x:g} renders as afternoon in Roblox; used 17.55 (golden hour)")
+        x = 17.55
+    return x
 
 
 def lighting_script(style: dict) -> str:
