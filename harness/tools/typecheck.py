@@ -231,6 +231,17 @@ def classify(msg: str, src_line: str, defs: Defs, names: set[str], kind: str = "
         close = _close_matches(m.group(1), defs.enums)
         return (f"Enum.{m.group(1)} does not exist, so this line errors."
                 + (f" Enums with a similar name: {', '.join(close)}." if close else ""))
+    m = re.match(r"^Unknown global '(\w+)'", msg)
+    if m:
+        # With Roblox's definitions loaded every real global is declared, so reading one that is not errors (live:
+        # World.luau "resolved Mesh lazily so the linter doesn't flag it" -- Mesh.new does not exist -- and the
+        # whole world build died on its first island).
+        name = m.group(1)
+        close = _close_matches(name, set(defs.classes))
+        return (f"'{name}' is not a Roblox global, so this line errors when it runs (attempt to index nil)."
+                + (f" Roblox classes with a similar name: {', '.join(close)}." if close else "")
+                + " To build geometry use Instance.new(\"Part\"/\"WedgePart\"/\"MeshPart\") or "
+                  "AssetService:CreateEditableMesh().")
     m = re.match(r"^Invalid class name '([^']+)'$", msg)
     if m:
         close = _close_matches(m.group(1), set(defs.classes))
