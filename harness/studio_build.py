@@ -38,6 +38,12 @@ HELP = f"""BUILD THE WORLD IN STUDIO (edit mode), not with a runtime script:
   Terrain: workspace.Terrain:Clear() wipes all terrain. Tag what gameplay needs (CollectionService:AddTag(part,
   "Checkpoint") or attributes) so runtime code finds it; never build geometry again at runtime.
   Runtime-only things (tweens, spinning hazards, movers, particles that must animate) stay in your scripts.
+- START FROM THE KIT'S BUILDERS, then tune and add on top: LookKit.apply(look), WorldKit2.biome(kind, {...}) for a whole
+  dressed area (islands, grassland, forest, snowy_mountains, candy, ...), WorldKit.archipelago / WorldKit.island for
+  floating islands, WorldKit2.platformingCourse / obby / raceCourse / arena / town / room for gameplay spaces,
+  WorldKit2.prop and PropKit for dressing. Never hand-sculpt terrain with FillBlock/FillBall/Part slabs: it reads as
+  flat boxes (live: a builder abandoned the kit and its world became square grass slabs). If a kit call surprises you,
+  change its options or position, don't replace it.
 - studio_view(views?): plays the game and shows you screenshots. With no views you get a survey: the player's own
   view, a high 3/4 overview, a side view and a top-down view of the whole world, plus runtime errors and a judge
   score against the concept art. Pass views=[{{"position":[x,y,z],"look_at":[x,y,z],"fov":60}}] to frame any
