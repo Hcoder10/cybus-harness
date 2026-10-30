@@ -143,7 +143,7 @@ READ_LOCK = int(os.environ.get("HARNESS_READ_LOCK", "6"))   # reads in a row bef
 
 _GUI_NEW = re.compile(r'Instance\.new\(\s*"(Frame|TextLabel|TextButton|ImageLabel|ImageButton|UIStroke|UIGradient)"')
 _PART_NEW = re.compile(r'Instance\.new\(\s*"(Part|WedgePart|CornerWedgePart|TrussPart)"')
-_LIGHT_WRITE = re.compile(r'Lighting\.(ClockTime|Brightness|Ambient|OutdoorAmbient|ExposureCompensation)\s*=(?!=)')
+_LIGHT_WRITE = re.compile(r'Lighting\.(ClockTime|Brightness|Ambient|OutdoorAmbient|ExposureCompensation)\s*=(?!=)')
 
 
 def kit_problems(srcs: dict[str, str]) -> dict[str, list[str]]:
