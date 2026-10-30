@@ -485,6 +485,13 @@ class Build:
                                        "{sky, sun, strength}) or a skybox (generate_skybox / LookKit.skybox). Never "
                                        "write Lighting, Atmosphere, ColorCorrection, Bloom or SunRays properties "
                                        "yourself: calling LookKit.apply again resets them.")
+            # Live: builders wiped and rebuilt the whole world every round instead of fixing what the judge named.
+            if len(studio.chunks()) >= 4 and re.search(
+                    r"Terrain\s*:\s*Clear\s*\(|\bWorld\s*:\s*ClearAllChildren\s*\(|StudioWorld\s*:\s*(ClearAllChildren|Destroy)\s*\(",
+                    code):
+                return ToolResult(text="REFUSED (nothing ran): the world already exists; do not wipe it. Fix only what "
+                                       "is wrong: move, retint or replace the specific pieces (destroy one named "
+                                       "sub-folder or model at most), add what is missing.")
             sculpt = len(re.findall(r":Fill(Block|Ball|Cylinder|Wedge|Region)\s*\(", code))
             if sculpt >= 2 and not re.search(r"WorldKit2?\s*\.|\bW2?\s*\.\s*(biome|island|archipelago|hill|rock|"
                                               r"platformingCourse|obby|arena|town|room|raceCourse)", code):
@@ -1115,6 +1122,18 @@ class Build:
 
     async def see(self, item: dict, label: str):
         cap = item["capture"]
+        if self.uses_studio(item) and cap.get("kind") in ("world", "screen") and not cap.get("commands"):
+            # A world is judged from the player's view plus a framed overview and side view (live: the spawn view
+            # alone judged a layout it could not see, and repairs chased it).
+            from harness.stage import Capture
+            out = Capture(label=label)
+            try:
+                images, _, _, errs = await self.studio.view(None, label)
+                out.images = images[:3]
+                out.logs = [{"kind": "warning", "text": e} for e in errs]
+            except Exception as e:  # noqa: BLE001 - a failed capture is data for the fixer, not a crash
+                out.error = f"{type(e).__name__}: {e}"
+            return out
         return await self.stage.capture(label, cap["kind"], cap.get("commands", []))
 
     async def assess(self, item: dict, capture, round_: int) -> Verdict:

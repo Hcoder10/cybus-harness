@@ -137,7 +137,9 @@ async def judge(llm, aspect: str, images: list[bytes], intent: str, style: str =
         # which was the tester's own avatar in its spawn force-field bubble, and sent the repairs after it.
         + "NOTE: the character near the centre of gameplay captures is the TESTER'S OWN Roblox avatar (its clothes, "
           "crown or cape are not part of the game), possibly inside a translucent spawn force-field bubble, plus "
-          "Roblox's own top-left menu buttons. Ignore all of these entirely; judge only what the game built.\n\n"
+          "Roblox's own top-left menu buttons. Ignore all of these entirely; judge only what the game built. Judge "
+          "colour by mood, harmony and readability, not by exact hex values from the style guide (a Roblox sky and "
+          "lighting cannot match a hex code; do not demand one).\n\n"
         + f"RUBRIC FOR {aspect.upper()}:\n{rubric(aspect)}\n\nCAPTURES OF THE BUILD ({len(images)}):")]
     for k, im in enumerate(images):
         parts += [text_part(f"Capture {k + 1}:"), image_part(im)]
