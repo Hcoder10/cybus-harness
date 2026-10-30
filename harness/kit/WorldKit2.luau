@@ -2705,8 +2705,10 @@ function WK2.animate(o)
 		if o.movers ~= false then
 			for _, inst in ipairs(CollectionService:GetTagged("KitMover")) do
 				if inst:IsDescendantOf(Workspace) then
-					local off = inst:GetAttribute("MoveOffset") or V3(0, 0, 10)
-					local per = inst:GetAttribute("MovePeriod") or 4
+					-- tolerate wrong attribute types (live: a string MoveOffset errored every frame and froze movers)
+					local off = inst:GetAttribute("MoveOffset")
+					if typeof(off) ~= "Vector3" then off = V3(0, 0, 10) end
+					local per = tonumber(inst:GetAttribute("MovePeriod")) or 4
 					local w = 2 * PI / per
 					local cf = originOf(inst) + off * math.sin(t * w)
 					if inst:IsA("Model") then inst:PivotTo(cf) else inst.CFrame = cf end
