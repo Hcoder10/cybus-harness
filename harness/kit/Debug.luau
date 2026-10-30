@@ -208,21 +208,28 @@ local function builtinsClient()
 				chars[p.Character] = true
 			end
 		end
-		local lo, hi
+		-- Percentile bounds: stray far-off parts (cloud puffs, a sea slab) must not stretch the survey framing
+		-- (live: the overview showed one tiny island and empty sky).
+		local xs, ys, zs = {}, {}, {}
 		for _, d in root:GetDescendants() do
 			if d:IsA("BasePart") and d.Transparency < 1 and d.Size.Magnitude < 600 and d.Name ~= "Baseplate" then
 				local m = d:FindFirstAncestorOfClass("Model")
 				if not (m and chars[m]) then
 					local p = d.Position
-					lo = lo and lo:Min(p) or p
-					hi = hi and hi:Max(p) or p
+					table.insert(xs, p.X)
+					table.insert(ys, p.Y)
+					table.insert(zs, p.Z)
 				end
 			end
 		end
-		if not lo then
+		if #xs == 0 then
 			return { min = { -60, 0, -60 }, max = { 60, 40, 60 } }
 		end
-		return { min = { lo.X, lo.Y, lo.Z }, max = { hi.X, hi.Y, hi.Z } }
+		local function q(t, f)
+			table.sort(t)
+			return t[math.clamp(math.floor(#t * f + 0.5), 1, #t)]
+		end
+		return { min = { q(xs, 0.05), q(ys, 0.05), q(zs, 0.05) }, max = { q(xs, 0.95), q(ys, 0.95), q(zs, 0.95) } }
 	end, "bounding box of the built world (StudioWorld, else workspace)")
 	Debug.register("__move", function(x, z, seconds)
 		-- walk the local character: x/z relative to the camera (0, -1 = forward), for `seconds`
